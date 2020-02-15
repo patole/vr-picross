@@ -1,0 +1,2 @@
+C:\Git\mixed-reality-extension-sdk-samples\samples\hello-world\obj\Debug\vr-picross.njsprojAssemblyReference.cache
+C:\Git\mixed-reality-extension-sdk-samples\samples\hello-world\bin\Microsoft.NodejsTools.WebRole.dll
