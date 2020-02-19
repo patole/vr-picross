@@ -5,27 +5,35 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const mixed_reality_extension_sdk_1 = require("@microsoft/mixed-reality-extension-sdk");
-//Todo for Picross:
+////DONE FOR PICROSS:
 //1: Interactable Cube
 /// ? Create Template cube - DONE
 //TODO: Animations, not getting the right rotations :(
-/// - Click to animate and change color - "Fill In"
-/// - Click to animate and change to wireframe - "Rule Out"
-/// - Modality choice (different buttons?)
+/// - Click to animate and change color - "Fill In" - DONE
+/// - Click to animate and change to wireframe - "Rule Out" - DONE
+/// - Modality choice (different buttons?) - DONE
 //2: Group of Cubes:
 /// - Line
 /// - Array
+//Todo for Picross:
+//2.5: Menu Flow
+// Front end "Start" cube
+// Front end Instructions cube
+// Front end Tutorial cube
 //3: Victory Condition:
 /// - Blackout (All filled)
 /// - Pattern (Match internal pattern of yes/No, prereq for labels)
 //4: Labels:
 /// - Floating labels next to cube array
 /// - Allow crossing out with interaction
-/// - Auto cross out on filling the row correctly
+/// - Auto cross out on filling the row correctly (Pushed)
+//4.5 Sets of puzzles, scripting? (On start, on end, maybe more plug and play animations for cube states?) 
+/// Tutorial set
+/// Random fast-paced 5x5 sets
 //5: Wow factor
-/// - Sounds
-/// - Animations
 /// - Rigid Body on victory
+/// - Sounds
+/// - Animations?
 var BlockState;
 (function (BlockState) {
     BlockState[BlockState["Filled"] = 0] = "Filled";
@@ -47,14 +55,31 @@ class PicrossApp {
     constructor(context, baseUrl) {
         this.context = context;
         this.baseUrl = baseUrl;
-        //Private Members
+        //Private Memers
+        //Actor Registry, for easy cleanup
+        this.SceneActors = null;
+        //ASSETS
+        //Asset Containers
         this.CubeAssets = null;
+        //Materials
         this.WhiteSolidMaterial = null;
         this.BlackSolidMaterial = null;
         this.GreyTransparentMaterial = null;
+        //Meshes
         this.CubeMesh = null;
+        //Front-End Members
+        this.StartCube = null;
+        this.StartText = null;
+        this.HelpCube = null;
+        this.HelpText = null;
+        this.TutorialCube = null;
+        this.TutorialText = null;
+        this.Banner = null;
+        //In-Game UI
         this.InputControlCube = null;
         this.InputControlCubeText = null;
+        this.MainMenuCube = null;
+        this.MainMenuText = null;
         // 2d Array of Game board Pieces
         this.GameBoard = null;
         this.HorizontalHints = null;
@@ -67,8 +92,134 @@ class PicrossApp {
         this.CubeAssets = new mixed_reality_extension_sdk_1.AssetContainer(context);
         this.context.onStarted(() => this.started());
     }
+    //Front-end Control code
+    CreateMainMenu() {
+        this.DestroyScene();
+        this.StartCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                transform: {
+                    local: { position: { x: -2, y: -.5, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
+                },
+                name: 'StartCube',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        this.SceneActors.push(this.StartCube);
+        const startButtonControlBehavior = this.StartCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        startButtonControlBehavior.onClick(_ => {
+            this.CreateGameBoard();
+        });
+        this.StartText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'StartText',
+                parentId: this.StartCube.id,
+                transform: {
+                    local: { position: { x: 0, y: 1.5, z: 0 } }
+                },
+                text: {
+                    contents: "Start Game!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
+        this.SceneActors.push(this.StartText);
+        this.HelpCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                //collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position: { x: -0, y: -.5, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
+                },
+                name: 'HelpCube',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        const helpCubeButt = this.HelpCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        helpCubeButt.onClick(_ => {
+        });
+        this.SceneActors.push(this.HelpCube);
+        this.HelpText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'HelpText',
+                parentId: this.HelpCube.id,
+                transform: {
+                    local: { position: { x: 0, y: 1.5, z: 0 } }
+                },
+                text: {
+                    contents: "Instructions!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
+        this.SceneActors.push(this.HelpText);
+        this.TutorialCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                //collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position: { x: 2, y: -.5, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
+                },
+                name: 'TutorialCube',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        const tutCubeButt = this.TutorialCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        tutCubeButt.onClick(_ => {
+        });
+        this.SceneActors.push(this.TutorialCube);
+        this.TutorialText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'TutorialText',
+                parentId: this.TutorialCube.id,
+                transform: {
+                    local: { position: { x: 0, y: 1.5, z: 0 } }
+                },
+                text: {
+                    contents: "Play Tutorial!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
+        this.SceneActors.push(this.TutorialText);
+        this.Banner = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'TutorialText',
+                transform: {
+                    local: { position: { x: 0, y: 2, z: 0 } }
+                },
+                text: {
+                    contents: "AltspacePicross!!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1.3
+                }
+            }
+        });
+        this.SceneActors.push(this.Banner);
+    }
+    DestroyScene() {
+        this.SceneActors.forEach(element => {
+            element.destroy();
+        });
+        this.SceneActors = new Array();
+    }
     //Methods
     started() {
+        this.SceneActors = new Array();
         this.BlackSolidMaterial = this.CubeAssets.createMaterial("BlackMaterial", {
             color: mixed_reality_extension_sdk_1.Color3.Black(), alphaMode: mixed_reality_extension_sdk_1.AlphaMode.Opaque,
         });
@@ -79,6 +230,11 @@ class PicrossApp {
             color: mixed_reality_extension_sdk_1.Color4.FromColor3(mixed_reality_extension_sdk_1.Color3.Gray(), .4), alphaMode: mixed_reality_extension_sdk_1.AlphaMode.Blend
         });
         this.CubeMesh = this.CubeAssets.createBoxMesh("BoxMesh", 1, 1, 1);
+        this.CreateMainMenu();
+        //this.CreateGameBoard();
+    }
+    CreateGameBoard() {
+        this.DestroyScene();
         this.InputControlCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
@@ -92,6 +248,7 @@ class PicrossApp {
                 }
             }
         });
+        this.SceneActors.push(this.InputControlCube);
         this.InputControlCubeText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 name: 'Text',
@@ -107,6 +264,7 @@ class PicrossApp {
                 }
             }
         });
+        this.SceneActors.push(this.InputControlCubeText);
         // Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
         // Button behaviors have two pairs of events: hover start/stop, and click start/stop.
         const inputControlBehavior = this.InputControlCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
@@ -128,10 +286,24 @@ class PicrossApp {
             this.SetCubeState(this.InputControlCube, this.CurrentInputState);
             this.UpdateControlText();
         });
-        this.CreateGameBoard();
-    }
-    //TODO NEXT
-    CreateGameBoard() {
+        this.MainMenuCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                transform: {
+                    local: { position: { x: -1, y: 0, z: 0 }, scale: { x: .1, y: .1, z: .1 } }
+                },
+                name: 'MainMenuCube',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.BlackSolidMaterial.id
+                }
+            }
+        });
+        this.SceneActors.push(this.MainMenuCube);
+        const MainMenuControlBehavior = this.MainMenuCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        MainMenuControlBehavior.onClick(_ => {
+            this.CreateMainMenu();
+        });
         this.GameBoard = new Array(this.CurrentHeight);
         for (let i = 0; i < this.CurrentHeight; ++i) {
             this.GameBoard[i] = new Array(this.CurrentWidth);
@@ -150,6 +322,7 @@ class PicrossApp {
                         }
                     }
                 });
+                this.SceneActors.push(cube.actor);
                 const gameBoardBehavior = cube.actor.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
                 gameBoardBehavior.onClick(_ => {
                     if (cube.currentState !== this.CurrentInputState) {

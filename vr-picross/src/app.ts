@@ -31,13 +31,17 @@ import { int, float } from '@microsoft/mixed-reality-extension-sdk/built/math/ty
 /// - Click to animate and change to wireframe - "Rule Out" - DONE
 /// - Modality choice (different buttons?) - DONE
 
-
-//Todo for Picross:
-
-
 //2: Group of Cubes:
 /// - Line
 /// - Array
+
+//Todo for Picross:
+
+//2.5: Menu Flow
+// Front end "Start" cube
+// Front end Instructions cube
+// Front end Tutorial cube
+
 
 //3: Victory Condition:
 /// - Blackout (All filled)
@@ -47,12 +51,17 @@ import { int, float } from '@microsoft/mixed-reality-extension-sdk/built/math/ty
 
 /// - Floating labels next to cube array
 /// - Allow crossing out with interaction
-/// - Auto cross out on filling the row correctly
+/// - Auto cross out on filling the row correctly (Pushed)
+
+//4.5 Sets of puzzles, scripting? (On start, on end, maybe more plug and play animations for cube states?) 
+/// Tutorial set
+/// Random fast-paced 5x5 sets
 
 //5: Wow factor
-/// - Sounds
-/// - Animations
 /// - Rigid Body on victory
+/// - Sounds
+/// - Animations?
+
 
 enum BlockState {
 	Filled,
@@ -90,17 +99,187 @@ export default class PicrossApp {
 		this.context.onStarted(() => this.started());
 	}
 
-    //Private Members
-    private CubeAssets: AssetContainer = null;
+	//Private Memers
 
+	//Actor Registry, for easy cleanup
+	private SceneActors: Actor[] = null;
+
+	//ASSETS
+	//Asset Containers
+	private CubeAssets: AssetContainer = null;
+	
+	//Materials
     private WhiteSolidMaterial: Material = null;
     private BlackSolidMaterial: Material = null;
     private GreyTransparentMaterial: Material = null;
 
-    private CubeMesh: Mesh = null;
+	//Meshes
+	private CubeMesh: Mesh = null;
+
+	//Front-End Members
+	private StartCube: Actor = null;
+	private StartText: Actor = null;
+	private HelpCube: Actor = null;
+	private HelpText: Actor = null;
+	private TutorialCube: Actor = null;
+	private TutorialText: Actor = null;
+
+	private Banner: Actor = null;
+
+	//Front-end Control code
+	private CreateMainMenu()
+	{
+		this.DestroyScene();
+
+		this.StartCube = Actor.Create(this.context, {
+            actor: {
+				collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x:-2, y: -.5, z: 0}, scale:{ x: .2, y: .2, z: .2}}
+				},
+                name: 'StartCube',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+
+		this.SceneActors.push(this.StartCube);
+
+		const startButtonControlBehavior = this.StartCube.setBehavior(ButtonBehavior);
+		startButtonControlBehavior.onClick(_ => {
+			this.CreateGameBoard();
+		});
+
+		this.StartText = Actor.Create(this.context, {
+			actor: {
+				name: 'StartText',
+				parentId: this.StartCube.id,
+				transform: {
+					local: { position: { x: 0, y: 1.5, z: 0 } }
+				},
+				text: {
+					contents: "Start Game!",
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1
+				}
+			}
+		});
+
+		this.SceneActors.push(this.StartText);
+
+		this.HelpCube = Actor.Create(this.context, {
+            actor: {
+				//collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x:-0, y: -.5, z: 0}, scale:{ x: .2, y: .2, z: .2}}
+				},
+                name: 'HelpCube',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+		
+		const helpCubeButt = this.HelpCube.setBehavior(ButtonBehavior);
+		helpCubeButt.onClick(_ => {
+
+		});
+		this.SceneActors.push(this.HelpCube);
+
+		this.HelpText = Actor.Create(this.context, {
+			actor: {
+				name: 'HelpText',
+				parentId: this.HelpCube.id,
+				transform: {
+					local: { position: { x: 0, y: 1.5, z: 0 } }
+				},
+				text: {
+					contents: "Instructions!",
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1
+				}
+			}
+		});
+
+		this.SceneActors.push(this.HelpText);
+
+		this.TutorialCube = Actor.Create(this.context, {
+            actor: {
+				//collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x:2, y: -.5, z: 0}, scale:{ x: .2, y: .2, z: .2}}
+				},
+                name: 'TutorialCube',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+
+		const tutCubeButt = this.TutorialCube.setBehavior(ButtonBehavior);
+		tutCubeButt.onClick(_ => {
+
+		});
+
+		this.SceneActors.push(this.TutorialCube);
+
+		this.TutorialText = Actor.Create(this.context, {
+			actor: {
+				name: 'TutorialText',
+				parentId: this.TutorialCube.id,
+				transform: {
+					local: { position: { x: 0, y: 1.5, z: 0 } }
+				},
+				text: {
+					contents: "Play Tutorial!",
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1
+				}
+			}
+		});
+
+		this.SceneActors.push(this.TutorialText);
+
+		this.Banner = Actor.Create(this.context, {
+			actor: {
+				name: 'TutorialText',
+				transform: {
+					local: { position: { x: 0, y: 2, z: 0 } }
+				},
+				text: {
+					contents: "AltspacePicross!!",
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1.3
+				}
+			}
+		});
+
+		this.SceneActors.push(this.Banner);
+	}
+
+	private DestroyScene()
+	{
+		this.SceneActors.forEach(element => {
+			element.destroy();
+		});
+
+		this.SceneActors = new Array<Actor>();
+	}
+
+	//In-Game UI
 	private InputControlCube: Actor = null;
 	private InputControlCubeText: Actor = null;
-	
+	private MainMenuCube: Actor = null;
+	private MainMenuText: Actor = null;
+
     // 2d Array of Game board Pieces
     private GameBoard: GameBoardPiece[][] = null;
     private HorizontalHints: Actor[][] = null;
@@ -116,6 +295,8 @@ export default class PicrossApp {
 	//Methods
     private started() {
 
+		this.SceneActors = new Array<Actor>();
+
         this.BlackSolidMaterial = this.CubeAssets.createMaterial("BlackMaterial", {
             color: Color3.Black(), alphaMode: AlphaMode.Opaque, 
         });
@@ -128,7 +309,17 @@ export default class PicrossApp {
 
         this.CubeMesh = this.CubeAssets.createBoxMesh("BoxMesh", 1, 1, 1);
 
-        this.InputControlCube = Actor.Create(this.context, {
+		this.CreateMainMenu();
+		//this.CreateGameBoard();
+	}
+
+
+
+	private CreateGameBoard()
+	{
+		this.DestroyScene();
+
+		this.InputControlCube = Actor.Create(this.context, {
             actor: {
 				collider: {geometry: {shape: ColliderType.Box}},
                 transform: {
@@ -141,6 +332,8 @@ export default class PicrossApp {
 				}
             }
 		});
+
+		this.SceneActors.push(this.InputControlCube);
 		
 		this.InputControlCubeText = Actor.Create(this.context, {
 			actor: {
@@ -157,6 +350,8 @@ export default class PicrossApp {
 				}
 			}
 		});
+
+		this.SceneActors.push(this.InputControlCubeText);
 
 		// Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
 		// Button behaviors have two pairs of events: hover start/stop, and click start/stop.
@@ -182,12 +377,27 @@ export default class PicrossApp {
 			this.UpdateControlText();
 		});
 
-		this.CreateGameBoard();
-	}
+		this.MainMenuCube = Actor.Create(this.context, {
+            actor: {
+				collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x: -1, y: 0, z: 0 }, scale:{ x: .1, y: .1, z: .1}}
+				},
+                name: 'MainMenuCube',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.BlackSolidMaterial.id
+				}
+            }
+		});
 
-	//TODO NEXT
-	private CreateGameBoard()
-	{
+		this.SceneActors.push(this.MainMenuCube);
+
+		const MainMenuControlBehavior  = this.MainMenuCube.setBehavior(ButtonBehavior);
+		MainMenuControlBehavior.onClick(_ => {
+			this.CreateMainMenu();
+		});
+
 		this.GameBoard = new Array(this.CurrentHeight);
 
 		for(let i = 0; i < this.CurrentHeight; ++i)
@@ -209,6 +419,9 @@ export default class PicrossApp {
 						}
 					}
 				});
+
+				this.SceneActors.push(cube.actor);
+
 				const gameBoardBehavior = cube.actor.setBehavior(ButtonBehavior);
 
 				gameBoardBehavior.onClick(_  => {
