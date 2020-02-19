@@ -28,6 +28,7 @@ export default class PicrossApp {
     private MainMenuCube;
     private MainMenuText;
     private VictoryText;
+    private VictoryCondition;
     private GameBoard;
     private HorizontalHints;
     private VerticalHints;
@@ -36,8 +37,12 @@ export default class PicrossApp {
     private CurrentHeight;
     private CurrentInputState;
     private started;
+    private ResetVictoryCondition;
+    private StartGame0;
     private CreateGameBoard;
-    private CheckVictory;
+    private CreateHints;
+    private CheckVictoryPattern;
+    private CheckVictoryBlackout;
     private VictoryAnimation;
     private SetCubeState;
     private UpdateControlText;
