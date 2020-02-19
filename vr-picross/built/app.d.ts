@@ -8,6 +8,7 @@ export default class PicrossApp {
     private baseUrl;
     constructor(context: Context, baseUrl: string);
     private SceneActors;
+    private SceneEffects;
     private CubeAssets;
     private WhiteSolidMaterial;
     private BlackSolidMaterial;
@@ -26,6 +27,7 @@ export default class PicrossApp {
     private InputControlCubeText;
     private MainMenuCube;
     private MainMenuText;
+    private VictoryText;
     private GameBoard;
     private HorizontalHints;
     private VerticalHints;
@@ -35,6 +37,8 @@ export default class PicrossApp {
     private CurrentInputState;
     private started;
     private CreateGameBoard;
+    private CheckVictory;
+    private VictoryAnimation;
     private SetCubeState;
     private UpdateControlText;
     private AnimateActorLocalRotation;

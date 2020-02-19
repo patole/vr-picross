@@ -15,11 +15,11 @@ const mixed_reality_extension_sdk_1 = require("@microsoft/mixed-reality-extensio
 //2: Group of Cubes:
 /// - Line
 /// - Array
-//Todo for Picross:
 //2.5: Menu Flow
 // Front end "Start" cube
-// Front end Instructions cube
-// Front end Tutorial cube
+// Front end Instructions cube (TODO: Instructions Script)
+// Front end Tutorial cube (TODO: Tutorial script)
+//Todo for Picross:
 //3: Victory Condition:
 /// - Blackout (All filled)
 /// - Pattern (Match internal pattern of yes/No, prereq for labels)
@@ -58,6 +58,7 @@ class PicrossApp {
         //Private Memers
         //Actor Registry, for easy cleanup
         this.SceneActors = null;
+        this.SceneEffects = null;
         //ASSETS
         //Asset Containers
         this.CubeAssets = null;
@@ -80,14 +81,16 @@ class PicrossApp {
         this.InputControlCubeText = null;
         this.MainMenuCube = null;
         this.MainMenuText = null;
+        //Victory UI
+        this.VictoryText = null;
         // 2d Array of Game board Pieces
         this.GameBoard = null;
         this.HorizontalHints = null;
         this.VerticalHints = null;
         // Current Solution, this is what gets encoded in the end
         this.CurrentSolution = null;
-        this.CurrentWidth = 10;
-        this.CurrentHeight = 10;
+        this.CurrentWidth = 3;
+        this.CurrentHeight = 1;
         this.CurrentInputState = BlockState.Filled;
         this.CubeAssets = new mixed_reality_extension_sdk_1.AssetContainer(context);
         this.context.onStarted(() => this.started());
@@ -216,10 +219,15 @@ class PicrossApp {
             element.destroy();
         });
         this.SceneActors = new Array();
+        this.SceneEffects.forEach(element => {
+            element.destroy();
+        });
+        this.SceneEffects = new Array();
     }
     //Methods
     started() {
         this.SceneActors = new Array();
+        this.SceneEffects = new Array();
         this.BlackSolidMaterial = this.CubeAssets.createMaterial("BlackMaterial", {
             color: mixed_reality_extension_sdk_1.Color3.Black(), alphaMode: mixed_reality_extension_sdk_1.AlphaMode.Opaque,
         });
@@ -304,6 +312,21 @@ class PicrossApp {
         MainMenuControlBehavior.onClick(_ => {
             this.CreateMainMenu();
         });
+        this.MainMenuText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'MainMenuText',
+                parentId: this.MainMenuCube.id,
+                transform: {
+                    local: { position: { x: 0, y: 1, z: 0 } }
+                },
+                text: {
+                    contents: "Return To Main Menu\n(Progress will not be saved!)",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.BottomCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
         this.GameBoard = new Array(this.CurrentHeight);
         for (let i = 0; i < this.CurrentHeight; ++i) {
             this.GameBoard[i] = new Array(this.CurrentWidth);
@@ -329,6 +352,7 @@ class PicrossApp {
                         cube.currentState = this.CurrentInputState;
                         this.SetCubeState(cube.actor, cube.currentState);
                     }
+                    this.CheckVictory();
                 });
                 //TODO: How to get current input state? (Controller buttons pressed?)
                 // gameBoardBehavior.onHover('enter', _  => {
@@ -342,6 +366,68 @@ class PicrossApp {
                 this.GameBoard[i][j] = cube;
             }
         }
+    }
+    CheckVictory() {
+        let victory = true;
+        this.GameBoard.forEach(boardRow => {
+            boardRow.forEach(cube => {
+                if (cube.currentState !== BlockState.Filled) {
+                    victory = false;
+                }
+            });
+        });
+        if (victory) {
+            this.VictoryAnimation();
+        }
+    }
+    VictoryAnimation() {
+        this.SceneEffects = new Array();
+        //First, hide game board and create RBs from filled blocks
+        this.GameBoard.forEach(boardRow => {
+            boardRow.forEach(cube => {
+                cube.actor.appearance.enabled = false;
+                if (cube.currentState === BlockState.Filled) {
+                    //Create RB
+                    let localRB = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+                        actor: {
+                            collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                            transform: {
+                                local: { position: cube.actor.transform.local.position, scale: { x: .1, y: .1, z: .1 } }
+                            },
+                            rigidBody: {
+                                enabled: true,
+                                velocity: { x: 0, y: 2, z: 10 },
+                                detectCollisions: true,
+                                collisionDetectionMode: mixed_reality_extension_sdk_1.CollisionDetectionMode.Discrete
+                            },
+                            appearance: {
+                                meshId: this.CubeMesh.id,
+                                materialId: this.BlackSolidMaterial.id
+                            }
+                        }
+                    });
+                    this.SceneEffects.push(localRB);
+                }
+            });
+        });
+        this.VictoryText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'VictoryText',
+                transform: {
+                    local: { position: { x: 0, y: 0, z: 0 } }
+                },
+                text: {
+                    contents: "VICTORIOUS!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.BottomCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1.2
+                }
+            }
+        });
+        this.MainMenuText.text.contents = "Return to Main Menu";
+        this.SceneEffects.push(this.VictoryText);
+        this.InputControlCube.appearance.enabled = false;
+        this.InputControlCubeText.appearance.enabled = false;
     }
     SetCubeState(actor, state) {
         switch (state) {
