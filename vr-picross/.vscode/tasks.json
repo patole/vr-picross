@@ -8,6 +8,14 @@
             "script": "build",
             "group": "build",
             "problemMatcher": []
+        },
+        {
+            "type": "npm",
+            "script": "build-only",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

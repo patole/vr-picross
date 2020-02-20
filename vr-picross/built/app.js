@@ -19,21 +19,37 @@ const mixed_reality_extension_sdk_1 = require("@microsoft/mixed-reality-extensio
 // Front end "Start" cube
 // Front end Instructions cube (TODO: Instructions Script)
 // Front end Tutorial cube (TODO: Tutorial script)
-//Todo for Picross:
 //3: Victory Condition:
 /// - Blackout (All filled) (DONE)
 /// - Pattern (Match internal pattern of yes/No, prereq for labels)
 //4: Labels:
 /// - Floating labels next to cube array
 /// - Allow crossing out with interaction
+//Todo for Picross:
+//4: Labels:
 /// - Auto cross out on filling the row correctly (Pushed)
 //4.5 Sets of puzzles, scripting? (On start, on end, maybe more plug and play animations for cube states?) 
 /// Tutorial set
 /// Random fast-paced 5x5 sets
 //5: Wow factor
-/// - Rigid Body on victory
+//// - Rigid Body on victory (DONE)
 /// - Sounds
 /// - Animations?
+class PicrossPuzzle {
+    constructor() {
+        this.width = 0;
+        this.height = 0;
+        this.answerKey = new Array();
+        this.creator = "Me";
+        this.name = "Name";
+        this.hint = "Hint";
+    }
+}
+class PicrossPuzzleSet {
+    constructor() {
+        this.puzzles = new Array();
+    }
+}
 var BlockState;
 (function (BlockState) {
     BlockState[BlockState["Filled"] = 0] = "Filled";
@@ -41,13 +57,43 @@ var BlockState;
     BlockState[BlockState["RuledOut"] = 2] = "RuledOut";
 })(BlockState || (BlockState = {}));
 class GameBoardPiece {
+    constructor() {
+        this.actor = null;
+        this.currentState = BlockState.Filled;
+        //Desired state?	
+    }
 }
 class Hint {
+    constructor() {
+        this.BoxActor = null;
+        this.TextActor = null;
+        this.number = 0;
+        this.crossedOut = false;
+        this.uncrossedMaterialId = "";
+        this.crossedMaterialId = "";
+    }
+    ToggleCrossState() {
+        if (this.crossedOut) {
+            this.SetUncrossed();
+        }
+        else {
+            this.SetCrossed();
+        }
+    }
+    SetCrossed() {
+        this.BoxActor.appearance.materialId = this.crossedMaterialId;
+        this.crossedOut = true;
+    }
+    SetUncrossed() {
+        this.BoxActor.appearance.materialId = this.uncrossedMaterialId;
+        this.crossedOut = false;
+    }
 }
 class HintSet {
     constructor() {
         this.hints = new Array();
         this.isHorizontal = true;
+        this.solved = false;
     }
 }
 class PicrossApp {
@@ -56,6 +102,7 @@ class PicrossApp {
         this.context = context;
         this.baseUrl = baseUrl;
         //Private Memers
+        //#region  Member Vars
         //Actor Registry, for easy cleanup
         this.SceneActors = null;
         this.SceneEffects = null;
@@ -66,13 +113,14 @@ class PicrossApp {
         this.WhiteSolidMaterial = null;
         this.BlackSolidMaterial = null;
         this.GreyTransparentMaterial = null;
+        this.TransparentMaterial = null;
         //Meshes
         this.CubeMesh = null;
         //Front-End Members
         this.StartCube = null;
         this.StartText = null;
-        this.HelpCube = null;
-        this.HelpText = null;
+        this.EditCube = null;
+        this.EditText = null;
         this.TutorialCube = null;
         this.TutorialText = null;
         this.Banner = null;
@@ -81,22 +129,28 @@ class PicrossApp {
         this.InputControlCubeText = null;
         this.MainMenuCube = null;
         this.MainMenuText = null;
+        //Edit UI
+        this.SaveCube = null;
+        this.SaveText = null;
         //Victory UI
         this.VictoryText = null;
+        this.CurrentPuzzleSet = null;
+        this.PuzzleIndex = 0;
         //Template for victory
         this.VictoryCondition = null;
         // 2d Array of Game board Pieces
         this.GameBoard = null;
         this.HorizontalHints = null;
         this.VerticalHints = null;
-        // Current Solution, this is what gets encoded in the end
-        this.CurrentSolution = null;
         this.CurrentWidth = 5;
         this.CurrentHeight = 5;
         this.CurrentInputState = BlockState.Filled;
+        this.EditMode = false;
         this.CubeAssets = new mixed_reality_extension_sdk_1.AssetContainer(context);
         this.context.onStarted(() => this.started());
     }
+    //#endregion
+    //#region Codes
     //Front-end Control code
     CreateMainMenu() {
         this.DestroyScene();
@@ -116,7 +170,8 @@ class PicrossApp {
         this.SceneActors.push(this.StartCube);
         const startButtonControlBehavior = this.StartCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         startButtonControlBehavior.onClick(_ => {
-            this.StartGame0();
+            this.DefaultVictoryCondition();
+            this.StartGame();
         });
         this.StartText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
@@ -134,9 +189,9 @@ class PicrossApp {
             }
         });
         this.SceneActors.push(this.StartText);
-        this.HelpCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+        this.EditCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
-                //collider: {geometry: {shape: ColliderType.Box}},
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
                 transform: {
                     local: { position: { x: -0, y: -.5, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
                 },
@@ -147,29 +202,30 @@ class PicrossApp {
                 }
             }
         });
-        const helpCubeButt = this.HelpCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        const helpCubeButt = this.EditCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         helpCubeButt.onClick(_ => {
+            this.EditGame();
         });
-        this.SceneActors.push(this.HelpCube);
-        this.HelpText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+        this.SceneActors.push(this.EditCube);
+        this.EditText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
-                name: 'HelpText',
-                parentId: this.HelpCube.id,
+                name: 'EditCube',
+                parentId: this.EditCube.id,
                 transform: {
                     local: { position: { x: 0, y: 1.5, z: 0 } }
                 },
                 text: {
-                    contents: "Instructions!",
+                    contents: "Edit Game Board!",
                     anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
                     color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
                     height: 1
                 }
             }
         });
-        this.SceneActors.push(this.HelpText);
+        this.SceneActors.push(this.EditText);
         this.TutorialCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
-                //collider: {geometry: {shape: ColliderType.Box}},
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
                 transform: {
                     local: { position: { x: 2, y: -.5, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
                 },
@@ -182,6 +238,10 @@ class PicrossApp {
         });
         const tutCubeButt = this.TutorialCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         tutCubeButt.onClick(_ => {
+            this.SetupTutorialPicrossSet();
+            this.PuzzleIndex = 0;
+            this.ResetVictoryCondition();
+            this.StartGame();
         });
         this.SceneActors.push(this.TutorialCube);
         this.TutorialText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
@@ -202,7 +262,7 @@ class PicrossApp {
         this.SceneActors.push(this.TutorialText);
         this.Banner = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
-                name: 'TutorialText',
+                name: 'BannerText',
                 transform: {
                     local: { position: { x: 0, y: 2, z: 0 } }
                 },
@@ -239,42 +299,124 @@ class PicrossApp {
         this.GreyTransparentMaterial = this.CubeAssets.createMaterial("GreyMaterial", {
             color: mixed_reality_extension_sdk_1.Color4.FromColor3(mixed_reality_extension_sdk_1.Color3.Gray(), .4), alphaMode: mixed_reality_extension_sdk_1.AlphaMode.Blend
         });
+        this.TransparentMaterial = this.CubeAssets.createMaterial("TransparentMaterial", {
+            color: mixed_reality_extension_sdk_1.Color4.FromColor3(mixed_reality_extension_sdk_1.Color3.White(), 0), alphaMode: mixed_reality_extension_sdk_1.AlphaMode.Blend
+        });
         this.CubeMesh = this.CubeAssets.createBoxMesh("BoxMesh", 1, 1, 1);
+        this.DefaultVictoryCondition();
         this.CreateMainMenu();
         //this.CreateGameBoard();
     }
+    SetupStarterPicrossSet() {
+        this.CurrentPuzzleSet = new PicrossPuzzleSet();
+        let newPuzzle = new PicrossPuzzle();
+        newPuzzle.height = 5;
+        newPuzzle.width = 5;
+        newPuzzle.answerKey = [[1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 1],
+            [1, 0, 1, 0, 1],
+            [1, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1]];
+        this.CurrentPuzzleSet.puzzles = [newPuzzle];
+    }
+    SetupTutorialPicrossSet() {
+        this.CurrentPuzzleSet = new PicrossPuzzleSet();
+        let newPuzzle0 = new PicrossPuzzle();
+        newPuzzle0.height = 1;
+        newPuzzle0.width = 1;
+        newPuzzle0.answerKey = [[1]];
+        this.CurrentPuzzleSet = new PicrossPuzzleSet();
+        let newPuzzle1 = new PicrossPuzzle();
+        newPuzzle1.height = 1;
+        newPuzzle1.width = 3;
+        newPuzzle1.answerKey = [[0, 1, 0]];
+        this.CurrentPuzzleSet = new PicrossPuzzleSet();
+        let newPuzzle2 = new PicrossPuzzle();
+        newPuzzle2.height = 3;
+        newPuzzle2.width = 3;
+        newPuzzle2.answerKey = [[1, 1, 1],
+            [0, 1, 1],
+            [0, 0, 1]];
+        this.CurrentPuzzleSet.puzzles = [newPuzzle0, newPuzzle1, newPuzzle2];
+    }
+    SetupChallenge() {
+    }
     ResetVictoryCondition() {
-        this.VictoryCondition = new Array(this.CurrentHeight);
-        for (let i = 0; i < this.CurrentHeight; ++i) {
-            this.VictoryCondition[i] = new Array(this.CurrentWidth);
-            this.VictoryCondition[i].forEach(element => {
-                element = 0;
-            });
+        this.VictoryCondition = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].answerKey;
+        this.CurrentWidth = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].width;
+        this.CurrentHeight = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].height;
+    }
+    DefaultVictoryCondition() {
+        this.SetupStarterPicrossSet();
+        this.PuzzleIndex = 0;
+        this.ResetVictoryCondition();
+    }
+    EditGame() {
+        this.EditMode = true;
+        this.SetupEditUI();
+        this.UpdateBoardFromVictory();
+    }
+    StartGame() {
+        this.EditMode = false;
+        this.SetupMainGameUI();
+    }
+    CreateSaveCube() {
+        this.SaveCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                transform: {
+                    local: { position: { x: 0, y: -.5, z: 0 }, scale: { x: .1, y: .1, z: .1 } }
+                },
+                name: 'SaveCube',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        this.SceneActors.push(this.SaveCube);
+        this.SaveText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'SaveText',
+                parentId: this.SaveCube.id,
+                transform: {
+                    local: { position: { x: 0, y: 1, z: 0 } }
+                },
+                text: {
+                    contents: "Save Puzzle!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
+        this.SceneActors.push(this.SaveText);
+        // Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
+        // Button behaviors have two pairs of events: hover start/stop, and click start/stop.
+        const inputControlBehavior = this.SaveCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        inputControlBehavior.onClick(_ => {
+            this.UpdateVictoryFromBoard();
+        });
+    }
+    UpdateVictoryFromBoard() {
+        this.ResetVictoryCondition();
+        for (let y = 0; y < this.GameBoard.length; y++) {
+            for (let x = 0; x < this.GameBoard[y].length; x++) {
+                const cube = this.GameBoard[y][x];
+                this.VictoryCondition[y][x] = (cube.currentState === BlockState.Filled) ? 1 : 0;
+            }
         }
     }
-    StartGame0() {
-        this.ResetVictoryCondition();
-        this.VictoryCondition[0][0] = 1;
-        this.VictoryCondition[0][1] = 1;
-        this.VictoryCondition[0][2] = 1;
-        this.VictoryCondition[0][3] = 1;
-        this.VictoryCondition[0][4] = 1;
-        this.VictoryCondition[4][0] = 1;
-        this.VictoryCondition[4][1] = 1;
-        this.VictoryCondition[4][2] = 1;
-        this.VictoryCondition[4][3] = 1;
-        this.VictoryCondition[4][4] = 1;
-        this.VictoryCondition[1][0] = 1;
-        this.VictoryCondition[1][4] = 1;
-        this.VictoryCondition[2][0] = 1;
-        this.VictoryCondition[2][4] = 1;
-        this.VictoryCondition[3][0] = 1;
-        this.VictoryCondition[3][4] = 1;
-        this.VictoryCondition[2][2] = 1;
-        this.CreateGameBoard();
+    UpdateBoardFromVictory() {
+        for (let y = 0; y < this.VictoryCondition.length; y++) {
+            for (let x = 0; x < this.VictoryCondition[y].length; x++) {
+                const gamePiece = this.GameBoard[y][x];
+                gamePiece.currentState = (this.VictoryCondition[y][x] === 1) ? BlockState.Filled : BlockState.Empty;
+                this.SetCubeState(gamePiece.actor, gamePiece.currentState);
+            }
+        }
     }
-    CreateGameBoard() {
-        this.DestroyScene();
+    CreateInGameInputControl() {
         this.InputControlCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
@@ -326,6 +468,8 @@ class PicrossApp {
             this.SetCubeState(this.InputControlCube, this.CurrentInputState);
             this.UpdateControlText();
         });
+    }
+    CreateMainMenuControl() {
         this.MainMenuCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
@@ -352,13 +496,36 @@ class PicrossApp {
                     local: { position: { x: 0, y: 1, z: 0 } }
                 },
                 text: {
-                    contents: "Return To Main Menu\n(Progress will not be saved!)",
+                    contents: "Return To Main Menu",
                     anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.BottomCenter,
                     color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
                     height: .5
                 }
             }
         });
+    }
+    DestroyHints() {
+        this.HorizontalHints.forEach(hintset => {
+            hintset.hints.forEach(hint => {
+                hint.BoxActor.destroy();
+                hint.TextActor.destroy();
+            });
+        });
+        this.VerticalHints.forEach(hintset => {
+            hintset.hints.forEach(hint => {
+                hint.BoxActor.destroy();
+                hint.TextActor.destroy();
+            });
+        });
+    }
+    DestroyGameBoard() {
+        this.GameBoard.forEach(array => {
+            array.forEach(element => {
+                element.actor.destroy();
+            });
+        });
+    }
+    CreateGameBoard() {
         this.GameBoard = new Array(this.CurrentHeight);
         for (let i = 0; i < this.CurrentHeight; ++i) {
             this.GameBoard[i] = new Array(this.CurrentWidth);
@@ -377,7 +544,6 @@ class PicrossApp {
                         }
                     }
                 });
-                this.SceneActors.push(cube.actor);
                 const gameBoardBehavior = cube.actor.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
                 gameBoardBehavior.onClick(_ => {
                     if (cube.currentState !== this.CurrentInputState) {
@@ -386,6 +552,7 @@ class PicrossApp {
                     }
                     this.CheckVictoryPattern();
                 });
+                cube.currentState = BlockState.Empty;
                 //TODO: How to get current input state? (Controller buttons pressed?)
                 // gameBoardBehavior.onHover('enter', _  => {
                 // 	t
@@ -398,9 +565,118 @@ class PicrossApp {
                 this.GameBoard[i][j] = cube;
             }
         }
+    }
+    CreateEditInputControl() {
+        this.InputControlCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                transform: {
+                    local: { position: { x: -1, y: -.5, z: 0 }, scale: { x: .1, y: .1, z: .1 } }
+                },
+                name: 'InputControlCube',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        this.SceneActors.push(this.InputControlCube);
+        this.InputControlCubeText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'Text',
+                parentId: this.InputControlCube.id,
+                transform: {
+                    local: { position: { x: 0, y: 1, z: 0 } }
+                },
+                text: {
+                    contents: "UNSET!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
+        this.SceneActors.push(this.InputControlCubeText);
+        // Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
+        // Button behaviors have two pairs of events: hover start/stop, and click start/stop.
+        const inputControlBehavior = this.InputControlCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        inputControlBehavior.onClick(_ => {
+            switch (this.CurrentInputState) {
+                case BlockState.Filled:
+                    //Switch To Reset
+                    this.CurrentInputState = BlockState.Empty;
+                    break;
+                case BlockState.Empty:
+                    //Switch to FillIn
+                    this.CurrentInputState = BlockState.Filled;
+                    break;
+            }
+            this.SetCubeState(this.InputControlCube, this.CurrentInputState);
+            this.UpdateControlText();
+        });
+    }
+    SetupEditUI() {
+        this.DestroyScene();
+        this.CreateInGameInputControl();
+        this.CreateMainMenuControl();
+        this.CreateGameBoard();
+        this.CreateSaveCube();
+        this.SetCubeState(this.InputControlCube, BlockState.Filled);
+        this.UpdateControlText();
+    }
+    SetupMainGameUI() {
+        this.DestroyScene();
+        this.CreateInGameInputControl();
+        this.CreateMainMenuControl();
+        this.CreateGameBoard();
         this.SetCubeState(this.InputControlCube, BlockState.Filled);
         this.UpdateControlText();
         this.CreateHints();
+    }
+    CreateHint(number, position, set, isHorizontal) {
+        //New Hint
+        let newHint = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                transform: {
+                    local: { position: position, scale: { x: .1, y: .1, z: .1 } }
+                },
+                text: {
+                    contents: number.toString(),
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
+        let newHintBox = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                transform: {
+                    local: { position: position, scale: { x: .1, y: .1, z: .1 } }
+                },
+                collider: {
+                    geometry: {
+                        shape: mixed_reality_extension_sdk_1.ColliderType.Box
+                    }
+                },
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.TransparentMaterial.id,
+                }
+            }
+        });
+        let hintObj = new Hint();
+        hintObj.TextActor = newHint;
+        hintObj.BoxActor = newHintBox;
+        hintObj.crossedMaterialId = this.GreyTransparentMaterial.id;
+        hintObj.uncrossedMaterialId = this.TransparentMaterial.id;
+        hintObj.number = number;
+        hintObj.SetUncrossed();
+        set.hints.push(hintObj);
+        const hintcontrol = newHintBox.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        hintcontrol.onClick(user => {
+            if (!set.solved)
+                hintObj.ToggleCrossState();
+        });
     }
     CreateHints() {
         //Horizontal Hints
@@ -420,52 +696,16 @@ class PicrossApp {
                 }
                 else {
                     if (currentGroupCount > 0) {
-                        //New Hint
-                        let newHint = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
-                            actor: {
-                                transform: {
-                                    local: { position: { x: -.1 - .15 * numGroups, y: y * .15, z: 0 } }
-                                },
-                                text: {
-                                    contents: currentGroupCount.toString(),
-                                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
-                                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-                                    height: .1
-                                }
-                            }
-                        });
-                        let hintObj = new Hint();
-                        hintObj.actor = newHint;
-                        this.SceneActors.push(newHint);
-                        hintObj.number = currentGroupCount;
-                        hints.hints.push(hintObj);
+                        let v = new mixed_reality_extension_sdk_1.Vector3(-.1 - .15 * numGroups, y * .15, 0);
+                        this.CreateHint(currentGroupCount, v, hints, true);
                         currentGroupCount = 0;
                         numGroups++;
                     }
                 }
             }
             if (numGroups === 0 || currentGroupCount > 0) {
-                //New Hint
-                let newHint = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
-                    actor: {
-                        transform: {
-                            local: { position: { x: -.1 - .15 * numGroups, y: y * .15, z: 0 } }
-                        },
-                        text: {
-                            contents: currentGroupCount.toString(),
-                            anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
-                            color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-                            height: .1
-                        }
-                    }
-                });
-                let hintObj = new Hint();
-                hintObj.actor = newHint;
-                this.SceneActors.push(newHint);
-                hintObj.number = currentGroupCount;
-                hints.hints.push(hintObj);
-                currentGroupCount = 0;
-                numGroups++;
+                let v = new mixed_reality_extension_sdk_1.Vector3(-.1 - .15 * numGroups, y * .15, 0);
+                this.CreateHint(currentGroupCount, v, hints, true);
             }
         }
         //Vertical Hints
@@ -485,76 +725,52 @@ class PicrossApp {
                 }
                 else {
                     if (currentGroupCount > 0) {
-                        //New Hint
-                        let newHint = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
-                            actor: {
-                                transform: {
-                                    local: { position: { x: x * .15,
-                                            y: (this.CurrentHeight - 1) * .15 + .1 + .15 * numGroups,
-                                            z: 0 } }
-                                },
-                                text: {
-                                    contents: currentGroupCount.toString(),
-                                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
-                                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-                                    height: .1
-                                }
-                            }
-                        });
-                        let hintObj = new Hint();
-                        hintObj.actor = newHint;
-                        this.SceneActors.push(newHint);
-                        hintObj.number = currentGroupCount;
-                        hints.hints.push(hintObj);
+                        let v = new mixed_reality_extension_sdk_1.Vector3(x * .15, (this.CurrentHeight - 1) * .15 + .1 + .15 * numGroups, 0);
+                        this.CreateHint(currentGroupCount, v, hints, true);
                         currentGroupCount = 0;
                         numGroups++;
                     }
                 }
             }
             if (numGroups === 0 || currentGroupCount > 0) {
-                //New Hint
-                let newHint = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
-                    actor: {
-                        transform: {
-                            local: { position: { x: .15 * x, y: (this.CurrentHeight - 1) * .15 + .1 + .15 * numGroups,
-                                    z: 0 } }
-                        },
-                        text: {
-                            contents: currentGroupCount.toString(),
-                            anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
-                            color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-                            height: .1
-                        }
-                    }
-                });
-                let hintObj = new Hint();
-                hintObj.actor = newHint;
-                this.SceneActors.push(newHint);
-                hintObj.number = currentGroupCount;
-                hints.hints.push(hintObj);
-                currentGroupCount = 0;
-                numGroups++;
+                let v = new mixed_reality_extension_sdk_1.Vector3(x * .15, (this.CurrentHeight - 1) * .15 + .1 + .15 * numGroups, 0);
+                this.CreateHint(currentGroupCount, v, hints, true);
             }
         }
     }
     CheckVictoryPattern() {
-        let victory = true;
-        for (let i = 0; i < this.GameBoard.length; i++) {
-            for (let j = 0; j < this.GameBoard[i].length; j++) {
-                const element = this.GameBoard[i][j];
-                let condition = this.VictoryCondition[i][j];
-                if (condition === 0 && element.currentState !== BlockState.Empty) {
-                    victory = false;
-                    break;
+        if (!this.EditMode) {
+            let victory = true;
+            for (let i = 0; i < this.GameBoard.length; i++) {
+                for (let j = 0; j < this.GameBoard[i].length; j++) {
+                    const element = this.GameBoard[i][j];
+                    let condition = this.VictoryCondition[i][j];
+                    if (condition === 0 && element.currentState !== BlockState.Empty) {
+                        victory = false;
+                        break;
+                    }
+                    else if (condition === 1 && element.currentState !== BlockState.Filled) {
+                        victory = false;
+                        break;
+                    }
                 }
-                else if (condition === 1 && element.currentState !== BlockState.Filled) {
-                    victory = false;
-                    break;
+            }
+            if (victory) {
+                this.CreateVictoryAnimation();
+                this.DestroyGameBoard();
+                this.DestroyHints();
+                if (++this.PuzzleIndex < this.CurrentPuzzleSet.puzzles.length) {
+                    this.ResetVictoryCondition();
+                    this.CreateGameBoard();
+                    this.CreateHints();
+                }
+                else {
+                    this.CreateVictoryText();
+                    this.InputControlCube.appearance.enabled = false;
+                    this.InputControlCubeText.appearance.enabled = false;
                 }
             }
         }
-        if (victory)
-            this.VictoryAnimation();
     }
     CheckVictoryBlackout() {
         let victory = true;
@@ -566,39 +782,11 @@ class PicrossApp {
             });
         });
         if (victory) {
-            this.VictoryAnimation();
+            this.CreateVictoryAnimation();
+            this.CreateVictoryText();
         }
     }
-    VictoryAnimation() {
-        this.SceneEffects = new Array();
-        //First, hide game board and create RBs from filled blocks
-        this.GameBoard.forEach(boardRow => {
-            boardRow.forEach(cube => {
-                cube.actor.appearance.enabled = false;
-                if (cube.currentState === BlockState.Filled) {
-                    //Create RB
-                    let localRB = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
-                        actor: {
-                            collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
-                            transform: {
-                                local: { position: cube.actor.transform.local.position, scale: { x: .1, y: .1, z: .1 } }
-                            },
-                            rigidBody: {
-                                enabled: true,
-                                velocity: { x: 0, y: 2, z: 10 },
-                                detectCollisions: true,
-                                collisionDetectionMode: mixed_reality_extension_sdk_1.CollisionDetectionMode.Discrete
-                            },
-                            appearance: {
-                                meshId: this.CubeMesh.id,
-                                materialId: this.BlackSolidMaterial.id
-                            }
-                        }
-                    });
-                    this.SceneEffects.push(localRB);
-                }
-            });
-        });
+    CreateVictoryText() {
         this.VictoryText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 name: 'VictoryText',
@@ -613,10 +801,39 @@ class PicrossApp {
                 }
             }
         });
-        this.MainMenuText.text.contents = "Return to Main Menu";
         this.SceneEffects.push(this.VictoryText);
-        this.InputControlCube.appearance.enabled = false;
-        this.InputControlCubeText.appearance.enabled = false;
+    }
+    CreateVictoryAnimation() {
+        //First, hide game board and create RBs from filled blocks
+        this.GameBoard.forEach(boardRow => {
+            boardRow.forEach(cube => {
+                cube.actor.appearance.enabled = false;
+                if (cube.currentState === BlockState.Filled) {
+                    let localPos = cube.actor.transform.local.position;
+                    localPos.z += .2;
+                    //Create RB
+                    let localRB = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+                        actor: {
+                            collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                            transform: {
+                                local: { position: localPos, scale: { x: .1, y: .1, z: .1 } }
+                            },
+                            rigidBody: {
+                                enabled: true,
+                                velocity: { x: 0, y: 2, z: 10 },
+                                detectCollisions: true,
+                                collisionDetectionMode: mixed_reality_extension_sdk_1.CollisionDetectionMode.ContinuousDynamic
+                            },
+                            appearance: {
+                                meshId: this.CubeMesh.id,
+                                materialId: this.BlackSolidMaterial.id
+                            }
+                        }
+                    });
+                    this.SceneEffects.push(localRB);
+                }
+            });
+        });
     }
     SetCubeState(actor, state) {
         switch (state) {

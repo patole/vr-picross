@@ -23,6 +23,7 @@ import {
 	CollisionDetectionMode
 } from '@microsoft/mixed-reality-extension-sdk';
 import { int, float } from '@microsoft/mixed-reality-extension-sdk/built/math/types';
+import { CipherNameAndProtocol } from 'tls';
 
 ////DONE FOR PICROSS:
 //1: Interactable Cube
@@ -41,16 +42,18 @@ import { int, float } from '@microsoft/mixed-reality-extension-sdk/built/math/ty
 // Front end Instructions cube (TODO: Instructions Script)
 // Front end Tutorial cube (TODO: Tutorial script)
 
-//Todo for Picross:
-
 //3: Victory Condition:
 /// - Blackout (All filled) (DONE)
 /// - Pattern (Match internal pattern of yes/No, prereq for labels)
 
 //4: Labels:
-
 /// - Floating labels next to cube array
 /// - Allow crossing out with interaction
+
+//Todo for Picross:
+
+//4: Labels:
+
 /// - Auto cross out on filling the row correctly (Pushed)
 
 //4.5 Sets of puzzles, scripting? (On start, on end, maybe more plug and play animations for cube states?) 
@@ -58,10 +61,22 @@ import { int, float } from '@microsoft/mixed-reality-extension-sdk/built/math/ty
 /// Random fast-paced 5x5 sets
 
 //5: Wow factor
-/// - Rigid Body on victory
+//// - Rigid Body on victory (DONE)
 /// - Sounds
 /// - Animations?
 
+class PicrossPuzzle {
+	public width = 0;
+	public height = 0;
+	public answerKey: int[][] = new Array<int[]>();
+	public creator = "Me";
+	public name = "Name";
+	public hint = "Hint";
+}
+
+class PicrossPuzzleSet {
+	public puzzles: PicrossPuzzle[] = new Array<PicrossPuzzle>();
+}
 
 enum BlockState {
 	Filled,
@@ -71,21 +86,54 @@ enum BlockState {
 
 class GameBoardPiece
 {
-	public actor: Actor;
-	public currentState: BlockState;
+	public actor: Actor = null;
+	public currentState: BlockState = BlockState.Filled;
 	//Desired state?	
 }
 
 class Hint
 {
-	public actor: Actor;
-	public number: int;
+	public BoxActor: Actor = null;
+	public TextActor: Actor = null;
+	public number: int = 0;
+	public crossedOut = false;
+	public uncrossedMaterialId = "";
+	public crossedMaterialId = "";
+
+	public ToggleCrossState()
+	{
+		if(this.crossedOut)
+		{
+			this.SetUncrossed();
+		}
+		else
+		{
+			this.SetCrossed();
+
+		}
+	}
+
+	public SetCrossed()
+	{
+		this.BoxActor.appearance.materialId = this.crossedMaterialId;
+
+		this.crossedOut = true;
+	}
+
+	public SetUncrossed()
+	{
+		this.BoxActor.appearance.materialId = this.uncrossedMaterialId;
+
+		this.crossedOut = false;
+	}
+	
 }
 
 class HintSet
 {
 	public hints: Hint[] = new Array<Hint>();
 	public isHorizontal = true;
+	public solved = false;
 }
 
 export default class PicrossApp {
@@ -97,7 +145,7 @@ export default class PicrossApp {
 	}
 
 	//Private Memers
-
+//#region  Member Vars
 	//Actor Registry, for easy cleanup
 	private SceneActors: Actor[] = null;
 	private SceneEffects: Actor[] = null;
@@ -110,20 +158,53 @@ export default class PicrossApp {
     private WhiteSolidMaterial: Material = null;
     private BlackSolidMaterial: Material = null;
     private GreyTransparentMaterial: Material = null;
-
+	private TransparentMaterial: Material = null;
 	//Meshes
 	private CubeMesh: Mesh = null;
 
 	//Front-End Members
 	private StartCube: Actor = null;
 	private StartText: Actor = null;
-	private HelpCube: Actor = null;
-	private HelpText: Actor = null;
+	private EditCube: Actor = null;
+	private EditText: Actor = null;
 	private TutorialCube: Actor = null;
 	private TutorialText: Actor = null;
 
 	private Banner: Actor = null;
 
+	//In-Game UI
+	private InputControlCube: Actor = null;
+	private InputControlCubeText: Actor = null;
+	private MainMenuCube: Actor = null;
+	private MainMenuText: Actor = null;
+
+	//Edit UI
+	private SaveCube: Actor = null;
+	private SaveText: Actor = null;
+
+	//Victory UI
+	private VictoryText: Actor = null;
+
+	private CurrentPuzzleSet: PicrossPuzzleSet = null;
+	private PuzzleIndex = 0;
+
+	//Template for victory
+	private VictoryCondition: int[][] = null;
+
+	// 2d Array of Game board Pieces
+	private GameBoard: GameBoardPiece[][] = null;
+	private HorizontalHints: HintSet[] = null;
+	private VerticalHints: HintSet[] = null;
+
+	private CurrentWidth: int = 5;
+	private CurrentHeight: int = 5;
+	
+	private CurrentInputState: BlockState = BlockState.Filled;
+
+	private EditMode = false;
+//#endregion
+
+//#region Codes
 	//Front-end Control code
 	private CreateMainMenu()
 	{
@@ -147,7 +228,8 @@ export default class PicrossApp {
 
 		const startButtonControlBehavior = this.StartCube.setBehavior(ButtonBehavior);
 		startButtonControlBehavior.onClick(_ => {
-			this.StartGame0();
+			this.DefaultVictoryCondition();
+			this.StartGame();
 		});
 
 		this.StartText = Actor.Create(this.context, {
@@ -168,9 +250,9 @@ export default class PicrossApp {
 
 		this.SceneActors.push(this.StartText);
 
-		this.HelpCube = Actor.Create(this.context, {
+		this.EditCube = Actor.Create(this.context, {
             actor: {
-				//collider: {geometry: {shape: ColliderType.Box}},
+				collider: {geometry: {shape: ColliderType.Box}},
                 transform: {
                     local: { position:{ x:-0, y: -.5, z: 0}, scale:{ x: .2, y: .2, z: .2}}
 				},
@@ -182,21 +264,21 @@ export default class PicrossApp {
             }
 		});
 		
-		const helpCubeButt = this.HelpCube.setBehavior(ButtonBehavior);
+		const helpCubeButt = this.EditCube.setBehavior(ButtonBehavior);
 		helpCubeButt.onClick(_ => {
-
+			this.EditGame();
 		});
-		this.SceneActors.push(this.HelpCube);
+		this.SceneActors.push(this.EditCube);
 
-		this.HelpText = Actor.Create(this.context, {
+		this.EditText = Actor.Create(this.context, {
 			actor: {
-				name: 'HelpText',
-				parentId: this.HelpCube.id,
+				name: 'EditCube',
+				parentId: this.EditCube.id,
 				transform: {
 					local: { position: { x: 0, y: 1.5, z: 0 } }
 				},
 				text: {
-					contents: "Instructions!",
+					contents: "Edit Game Board!",
 					anchor: TextAnchorLocation.MiddleCenter,
 					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
 					height: 1
@@ -204,11 +286,11 @@ export default class PicrossApp {
 			}
 		});
 
-		this.SceneActors.push(this.HelpText);
+		this.SceneActors.push(this.EditText);
 
 		this.TutorialCube = Actor.Create(this.context, {
             actor: {
-				//collider: {geometry: {shape: ColliderType.Box}},
+				collider: {geometry: {shape: ColliderType.Box}},
                 transform: {
                     local: { position:{ x:2, y: -.5, z: 0}, scale:{ x: .2, y: .2, z: .2}}
 				},
@@ -222,7 +304,10 @@ export default class PicrossApp {
 
 		const tutCubeButt = this.TutorialCube.setBehavior(ButtonBehavior);
 		tutCubeButt.onClick(_ => {
-
+			this.SetupTutorialPicrossSet();
+			this.PuzzleIndex = 0;
+			this.ResetVictoryCondition();
+			this.StartGame();
 		});
 
 		this.SceneActors.push(this.TutorialCube);
@@ -247,7 +332,7 @@ export default class PicrossApp {
 
 		this.Banner = Actor.Create(this.context, {
 			actor: {
-				name: 'TutorialText',
+				name: 'BannerText',
 				transform: {
 					local: { position: { x: 0, y: 2, z: 0 } }
 				},
@@ -277,35 +362,14 @@ export default class PicrossApp {
 		this.SceneEffects = new Array<Actor>();
 	}
 
-	//In-Game UI
-	private InputControlCube: Actor = null;
-	private InputControlCubeText: Actor = null;
-	private MainMenuCube: Actor = null;
-	private MainMenuText: Actor = null;
 
-	//Victory UI
-	private VictoryText: Actor = null;
-
-	//Template for victory
-	private VictoryCondition: int[][] = null;
-
-    // 2d Array of Game board Pieces
-    private GameBoard: GameBoardPiece[][] = null;
-    private HorizontalHints: HintSet[] = null;
-    private VerticalHints: HintSet[] = null;
-
-    // Current Solution, this is what gets encoded in the end
-    private CurrentSolution: Int8Array = null;
-    private CurrentWidth: int = 5;
-	private CurrentHeight: int = 5;
-	
-	private CurrentInputState: BlockState = BlockState.Filled;
 
 	//Methods
     private started() {
 
 		this.SceneActors = new Array<Actor>();
 		this.SceneEffects = new Array<Actor>();
+		
 
         this.BlackSolidMaterial = this.CubeAssets.createMaterial("BlackMaterial", {
             color: Color3.Black(), alphaMode: AlphaMode.Opaque, 
@@ -315,59 +379,158 @@ export default class PicrossApp {
         });
         this.GreyTransparentMaterial = this.CubeAssets.createMaterial("GreyMaterial", {
             color: Color4.FromColor3(Color3.Gray(), .4), alphaMode: AlphaMode.Blend
+		});
+		this.TransparentMaterial = this.CubeAssets.createMaterial("TransparentMaterial", {
+            color: Color4.FromColor3(Color3.White(), 0), alphaMode: AlphaMode.Blend
         });
 
         this.CubeMesh = this.CubeAssets.createBoxMesh("BoxMesh", 1, 1, 1);
+
+		this.DefaultVictoryCondition();
 
 		this.CreateMainMenu();
 		//this.CreateGameBoard();
 	}
 
+	private SetupStarterPicrossSet()
+	{
+		this.CurrentPuzzleSet = new PicrossPuzzleSet();
+		let newPuzzle: PicrossPuzzle = new PicrossPuzzle();
+		newPuzzle.height = 5;
+		newPuzzle.width = 5;
+		newPuzzle.answerKey =	[ [ 1, 1, 1, 1, 1 ]
+								, [ 1, 0, 0, 0, 1 ]
+								, [ 1, 0, 1, 0, 1 ]
+								, [ 1, 0, 0, 0, 1 ]
+								, [ 1, 1, 1, 1, 1 ]];
+		this.CurrentPuzzleSet.puzzles = [newPuzzle];
+	}
+
+	private SetupTutorialPicrossSet()
+	{
+		this.CurrentPuzzleSet = new PicrossPuzzleSet();
+		let newPuzzle0: PicrossPuzzle = new PicrossPuzzle();
+		newPuzzle0.height = 1;
+		newPuzzle0.width = 1;
+		newPuzzle0.answerKey =	[[ 1 ]];
+
+		this.CurrentPuzzleSet = new PicrossPuzzleSet();
+		let newPuzzle1: PicrossPuzzle = new PicrossPuzzle();
+		newPuzzle1.height = 1;
+		newPuzzle1.width = 3;
+		newPuzzle1.answerKey =	[[0, 1, 0]];
+
+		this.CurrentPuzzleSet = new PicrossPuzzleSet();
+		let newPuzzle2: PicrossPuzzle = new PicrossPuzzle();
+		newPuzzle2.height = 3;
+		newPuzzle2.width = 3;
+		newPuzzle2.answerKey = [[1, 1, 1],
+								[0, 1, 1],
+								[0, 0, 1]];
+
+		this.CurrentPuzzleSet.puzzles = [newPuzzle0, newPuzzle1, newPuzzle2];
+	}
+
+	private SetupChallenge()
+	{
+
+	}
+
 	private ResetVictoryCondition()
 	{
-		this.VictoryCondition = new Array(this.CurrentHeight);
-		for(let i = 0; i < this.CurrentHeight; ++i)
-		{
-			this.VictoryCondition[i] = new Array(this.CurrentWidth);
-			this.VictoryCondition[i].forEach(element => {
-				element = 0;
-			});
-		}
-
+		this.VictoryCondition = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].answerKey;
+		this.CurrentWidth = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].width;
+		this.CurrentHeight = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].height;
 	}
 
-	private StartGame0()
+	private DefaultVictoryCondition()
+	{
+		this.SetupStarterPicrossSet();
+		this.PuzzleIndex = 0;
+		this.ResetVictoryCondition();
+	}
+
+	private EditGame()
+	{
+		this.EditMode = true;
+		this.SetupEditUI();
+		this.UpdateBoardFromVictory();
+	}
+
+	private StartGame()
+	{
+		this.EditMode = false;
+		this.SetupMainGameUI();
+	}
+
+	private CreateSaveCube()
+	{
+		this.SaveCube = Actor.Create(this.context, {
+            actor: {
+				collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x: 0, y: -.5, z: 0 }, scale:{ x: .1, y: .1, z: .1}}
+				},
+                name: 'SaveCube',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+
+		this.SceneActors.push(this.SaveCube);
+		
+		this.SaveText = Actor.Create(this.context, {
+			actor: {
+				name: 'SaveText',
+				parentId: this.SaveCube.id,
+				transform: {
+					local: { position: { x: 0, y: 1, z: 0 } }
+				},
+				text: {
+					contents: "Save Puzzle!",
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1
+				}
+			}
+		});
+
+		this.SceneActors.push(this.SaveText);
+
+				// Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
+		// Button behaviors have two pairs of events: hover start/stop, and click start/stop.
+		const inputControlBehavior = this.SaveCube.setBehavior(ButtonBehavior);
+		inputControlBehavior.onClick(_ => {
+			this.UpdateVictoryFromBoard();
+		});		
+	}
+
+	private UpdateVictoryFromBoard()
 	{
 		this.ResetVictoryCondition();
-
-
-		this.VictoryCondition [0][0] = 1;
-		this.VictoryCondition [0][1] = 1;
-		this.VictoryCondition [0][2] = 1;
-		this.VictoryCondition [0][3] = 1;
-		this.VictoryCondition [0][4] = 1;
-		this.VictoryCondition [4][0] = 1;
-		this.VictoryCondition [4][1] = 1;
-		this.VictoryCondition [4][2] = 1;
-		this.VictoryCondition [4][3] = 1;
-		this.VictoryCondition [4][4] = 1;
-
-		this.VictoryCondition [1][0] = 1;
-		this.VictoryCondition [1][4] = 1;
-
-		this.VictoryCondition [2][0] = 1;
-		this.VictoryCondition [2][4] = 1;
-
-		this.VictoryCondition [3][0] = 1;
-		this.VictoryCondition [3][4] = 1;
-		this.VictoryCondition [2][2] = 1;
-		this.CreateGameBoard();
+		for (let y = 0; y < this.GameBoard.length; y++) {
+			for (let x = 0; x < this.GameBoard[y].length; x++) {
+				const cube = this.GameBoard[y][x];
+				this.VictoryCondition[y][x] = (cube.currentState === BlockState.Filled) ? 1 : 0;
+			}
+		}
 	}
 
-	private CreateGameBoard()
+	private UpdateBoardFromVictory()
 	{
-		this.DestroyScene();
+		for (let y = 0; y < this.VictoryCondition.length; y++) {
+			for (let x = 0; x < this.VictoryCondition[y].length; x++) {
+				const gamePiece = this.GameBoard[y][x];
+				gamePiece.currentState = (this.VictoryCondition[y][x] === 1) ? BlockState.Filled : BlockState.Empty;
+				this.SetCubeState(gamePiece.actor, gamePiece.currentState);
+			}
+		}
+	}
 
+	private CreateInGameInputControl()
+	{
 		this.InputControlCube = Actor.Create(this.context, {
             actor: {
 				collider: {geometry: {shape: ColliderType.Box}},
@@ -402,7 +565,7 @@ export default class PicrossApp {
 
 		this.SceneActors.push(this.InputControlCubeText);
 
-		// Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
+				// Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
 		// Button behaviors have two pairs of events: hover start/stop, and click start/stop.
 		const inputControlBehavior = this.InputControlCube.setBehavior(ButtonBehavior);
 		inputControlBehavior.onClick(_ => {
@@ -425,7 +588,10 @@ export default class PicrossApp {
 			this.SetCubeState(this.InputControlCube, this.CurrentInputState);
 			this.UpdateControlText();
 		});
+	}
 
+	private CreateMainMenuControl()
+	{
 		this.MainMenuCube = Actor.Create(this.context, {
             actor: {
 				collider: {geometry: {shape: ColliderType.Box}},
@@ -454,13 +620,44 @@ export default class PicrossApp {
 					local: { position: { x: 0, y: 1, z: 0 } }
 				},
 				text: {
-					contents: "Return To Main Menu\n(Progress will not be saved!)",
+					contents: "Return To Main Menu",
 					anchor: TextAnchorLocation.BottomCenter,
 					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
 					height: .5
 				}
 			}
 		});
+	}
+
+	private DestroyHints()
+	{
+		this.HorizontalHints.forEach(hintset => {
+			hintset.hints.forEach(hint => {
+				hint.BoxActor.destroy();
+				hint.TextActor.destroy();
+			});
+		});
+
+		this.VerticalHints.forEach(hintset => {
+			hintset.hints.forEach(hint => {
+				hint.BoxActor.destroy();
+				hint.TextActor.destroy();
+			});
+		});
+	}
+
+	private DestroyGameBoard()
+	{
+		this.GameBoard.forEach(array => {
+			array.forEach(element => {
+				element.actor.destroy();
+			});
+		});
+	}
+
+	private CreateGameBoard()
+	{
+
 		this.GameBoard = new Array(this.CurrentHeight);
 
 		for(let i = 0; i < this.CurrentHeight; ++i)
@@ -482,8 +679,6 @@ export default class PicrossApp {
 						}
 					}
 				});
- 
-				this.SceneActors.push(cube.actor);
 
 				const gameBoardBehavior = cube.actor.setBehavior(ButtonBehavior);
 
@@ -493,9 +688,11 @@ export default class PicrossApp {
 						cube.currentState = this.CurrentInputState;
 						this.SetCubeState(cube.actor, cube.currentState);
 					}
-
+					
 					this.CheckVictoryPattern();
 				});
+
+				cube.currentState = BlockState.Empty;
 
 				//TODO: How to get current input state? (Controller buttons pressed?)
 				// gameBoardBehavior.onHover('enter', _  => {
@@ -510,6 +707,87 @@ export default class PicrossApp {
 				this.GameBoard[i][j] = cube;
 			}
 		}
+	}
+
+	private CreateEditInputControl()
+	{
+		this.InputControlCube = Actor.Create(this.context, {
+            actor: {
+				collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x: -1, y: -.5, z: 0 }, scale:{ x: .1, y: .1, z: .1}}
+				},
+                name: 'InputControlCube',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+
+		this.SceneActors.push(this.InputControlCube);
+		
+		this.InputControlCubeText = Actor.Create(this.context, {
+			actor: {
+				name: 'Text',
+				parentId: this.InputControlCube.id,
+				transform: {
+					local: { position: { x: 0, y: 1, z: 0 } }
+				},
+				text: {
+					contents: "UNSET!",
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1
+				}
+			}
+		});
+
+		this.SceneActors.push(this.InputControlCubeText);
+
+				// Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
+		// Button behaviors have two pairs of events: hover start/stop, and click start/stop.
+		const inputControlBehavior = this.InputControlCube.setBehavior(ButtonBehavior);
+		inputControlBehavior.onClick(_ => {
+			switch(this.CurrentInputState)
+			{
+				case BlockState.Filled:
+					//Switch To Reset
+					this.CurrentInputState = BlockState.Empty;
+					break;
+				case BlockState.Empty:
+					//Switch to FillIn
+					this.CurrentInputState = BlockState.Filled;
+					break;
+			}
+
+			this.SetCubeState(this.InputControlCube, this.CurrentInputState);
+			this.UpdateControlText();
+		});
+	}
+
+	private SetupEditUI()
+	{
+		this.DestroyScene();
+
+		this.CreateInGameInputControl();
+		this.CreateMainMenuControl();
+		this.CreateGameBoard();
+		this.CreateSaveCube();
+
+		this.SetCubeState(this.InputControlCube, BlockState.Filled);
+		this.UpdateControlText();
+	}
+
+
+	
+	private SetupMainGameUI()
+	{
+		this.DestroyScene();
+
+		this.CreateInGameInputControl();
+		this.CreateMainMenuControl();
+		this.CreateGameBoard();
 
 		this.SetCubeState(this.InputControlCube, BlockState.Filled);
 		this.UpdateControlText();
@@ -517,6 +795,57 @@ export default class PicrossApp {
 		this.CreateHints();
 	}
 	
+	private CreateHint(number: int, position: Vector3, set: HintSet, isHorizontal: boolean)
+	{
+		//New Hint
+		let newHint: Actor = Actor.Create(this.context,{
+			actor: {
+				transform: {
+					local: { position: position , scale:{ x: .1, y: .1, z: .1} }
+				},
+				text: {
+					contents: number.toString(),
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1
+				}
+			}
+		});
+
+		let newHintBox: Actor = Actor.Create(this.context, {
+			actor: {
+				transform: {
+					local: { position: position , scale:{ x: .1, y: .1, z: .1} }
+				},
+				collider:{
+					geometry:{
+						shape: ColliderType.Box
+					}
+				},
+			appearance: { 
+				meshId: this.CubeMesh.id,
+				materialId: this.TransparentMaterial.id,
+			}}});
+
+
+
+		let hintObj: Hint = new Hint();
+		hintObj.TextActor = newHint;
+		hintObj.BoxActor = newHintBox
+		hintObj.crossedMaterialId = this.GreyTransparentMaterial.id;
+		hintObj.uncrossedMaterialId = this.TransparentMaterial.id;
+		hintObj.number = number;
+		hintObj.SetUncrossed();
+		
+		set.hints.push(hintObj);
+
+		const hintcontrol = newHintBox.setBehavior(ButtonBehavior);
+		hintcontrol.onClick(user => {
+			if(!set.solved)
+				hintObj.ToggleCrossState();
+		});			
+	}
+
 	private CreateHints()
 	{
 		//Horizontal Hints
@@ -542,27 +871,8 @@ export default class PicrossApp {
 				{
 					if(currentGroupCount > 0)
 					{
-						//New Hint
-						let newHint: Actor = Actor.Create(this.context,{
-							actor: {
-								transform: {
-									local: { position: { x: -.1 -.15 * numGroups , y: y * .15, z: 0 } }
-								},
-								text: {
-									contents: currentGroupCount.toString(),
-									anchor: TextAnchorLocation.MiddleCenter,
-									color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-									height: .1
-								}
-							}
-						});
-
-						let hintObj: Hint = new Hint();
-						hintObj.actor = newHint;
-
-						this.SceneActors.push(newHint);
-						hintObj.number = currentGroupCount;
-						hints.hints.push(hintObj);
+						let v = new Vector3(-.1 -.15 * numGroups , y * .15, 0);
+						this.CreateHint(currentGroupCount, v, hints, true );
 
 						currentGroupCount = 0;
 						numGroups++;
@@ -572,30 +882,8 @@ export default class PicrossApp {
 
 			if(numGroups === 0 || currentGroupCount > 0)
 			{
-				//New Hint
-				let newHint: Actor = Actor.Create(this.context,{
-					actor: {
-						transform: {
-							local: { position: { x: -.1 -.15 * numGroups , y: y * .15, z: 0 } }
-						},
-						text: {
-							contents: currentGroupCount.toString(),
-							anchor: TextAnchorLocation.MiddleCenter,
-							color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-							height: .1
-						}
-					}
-				});
-
-				let hintObj: Hint = new Hint();
-				hintObj.actor = newHint;
-
-				this.SceneActors.push(newHint);
-				hintObj.number = currentGroupCount;
-				hints.hints.push(hintObj);
-
-				currentGroupCount = 0;
-				numGroups++;
+				let v = new Vector3(-.1 -.15 * numGroups , y * .15, 0);
+				this.CreateHint(currentGroupCount, v, hints, true );
 			}
 
 
@@ -624,29 +912,10 @@ export default class PicrossApp {
 				{
 					if(currentGroupCount > 0)
 					{
-						//New Hint
-						let newHint: Actor = Actor.Create(this.context,{
-							actor: {
-								transform: {
-									local: { position: { x: x * .15 ,
-											y: (this.CurrentHeight-1) * .15 + .1 + .15 * numGroups,
-											z: 0 } }
-								},
-								text: {
-									contents: currentGroupCount.toString(),
-									anchor: TextAnchorLocation.MiddleCenter,
-									color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-									height: .1
-								}
-							}
-						});
-
-						let hintObj: Hint = new Hint();
-						hintObj.actor = newHint;
-
-						this.SceneActors.push(newHint);
-						hintObj.number = currentGroupCount;
-						hints.hints.push(hintObj);
+						let v = new Vector3(x * .15, 
+							(this.CurrentHeight-1) * .15 + .1 + .15 * numGroups, 
+							0);
+						this.CreateHint(currentGroupCount, v, hints, true );
 
 						currentGroupCount = 0;
 						numGroups++;
@@ -656,57 +925,56 @@ export default class PicrossApp {
 
 			if(numGroups === 0 || currentGroupCount > 0)
 			{
-				//New Hint
-				let newHint: Actor = Actor.Create(this.context,{
-					actor: {
-						transform: {
-							local: { position: { x: .15 * x , y: (this.CurrentHeight-1) * .15 + .1 + .15 * numGroups,
-								z: 0 } }
-						},
-						text: {
-							contents: currentGroupCount.toString(),
-							anchor: TextAnchorLocation.MiddleCenter,
-							color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
-							height: .1
-						}
-					}
-				});
-
-				let hintObj: Hint = new Hint();
-				hintObj.actor = newHint;
-
-				this.SceneActors.push(newHint);
-				hintObj.number = currentGroupCount;
-				hints.hints.push(hintObj);
-
-				currentGroupCount = 0;
-				numGroups++;
+				let v = new Vector3(x * .15, 
+					(this.CurrentHeight-1) * .15 + .1 + .15 * numGroups, 
+					0);
+				this.CreateHint(currentGroupCount, v, hints, true );
 			}
 		}
 	}
 
 	private CheckVictoryPattern()
 	{
-		let victory = true;
-		for (let i = 0; i < this.GameBoard.length; i++) {
-			for (let j = 0; j < this.GameBoard[i].length; j++) {
-				const element = this.GameBoard[i][j];
-				let condition = this.VictoryCondition[i][j];
-				if(condition === 0 && element.currentState !== BlockState.Empty)
-				{
-					victory = false;
-					break;
-				}
-				else if(condition === 1 && element.currentState !== BlockState.Filled)
-				{
-					victory = false;
-					break;
-				}
-			}	
-		}
+		if(!this.EditMode)
+		{
+			let victory = true;
+			for (let i = 0; i < this.GameBoard.length; i++) {
+				for (let j = 0; j < this.GameBoard[i].length; j++) {
+					const element = this.GameBoard[i][j];
+					let condition = this.VictoryCondition[i][j];
+					if(condition === 0 && element.currentState !== BlockState.Empty)
+					{
+						victory = false;
+						break;
+					}
+					else if(condition === 1 && element.currentState !== BlockState.Filled)
+					{
+						victory = false;
+						break;
+					}
+				}	
+			}
 
-		if(victory)
-			this.VictoryAnimation();
+			if(victory)
+			{
+				this.CreateVictoryAnimation();
+				this.DestroyGameBoard();
+				this.DestroyHints();
+				
+				if(++this.PuzzleIndex < this.CurrentPuzzleSet.puzzles.length)
+				{
+					this.ResetVictoryCondition();
+					this.CreateGameBoard();
+					this.CreateHints();
+				}
+				else
+				{
+					this.CreateVictoryText();
+					this.InputControlCube.appearance.enabled = false;
+					this.InputControlCubeText.appearance.enabled = false;
+				}
+			}
+		}
 	}
 
 	private CheckVictoryBlackout()
@@ -723,42 +991,13 @@ export default class PicrossApp {
 
 		if(victory)
 		{
-			this.VictoryAnimation();
+			this.CreateVictoryAnimation();
+			this.CreateVictoryText();
 		}
 	}
 
-	private VictoryAnimation()
+	private CreateVictoryText()
 	{
-		this.SceneEffects = new Array<Actor>();
-		//First, hide game board and create RBs from filled blocks
-		this.GameBoard.forEach(boardRow => {
-			boardRow.forEach(cube => {
-				cube.actor.appearance.enabled = false;
-				if(cube.currentState === BlockState.Filled)
-				{
-					//Create RB
-					let localRB = Actor.Create(this.context, {
-						actor: {
-							collider: {geometry: {shape: ColliderType.Box}},
-							transform: {
-								local: { position:cube.actor.transform.local.position, scale:{ x: .1, y: .1, z: .1}}
-							},
-							
-							rigidBody: {
-								enabled: true, 
-								velocity: {x: 0, y: 2, z: 10},
-								detectCollisions: true, 
-								collisionDetectionMode: CollisionDetectionMode.Discrete },
-							appearance: {
-								meshId: this.CubeMesh.id,
-								materialId: this.BlackSolidMaterial.id
-							}
-						}
-					});
-					this.SceneEffects.push(localRB);
-				}
-			});
-		});
 
 		this.VictoryText = Actor.Create(this.context, {
 			actor: {
@@ -776,12 +1015,47 @@ export default class PicrossApp {
 			}
 		});
 
-		this.MainMenuText.text.contents = "Return to Main Menu"
-
 		this.SceneEffects.push(this.VictoryText);
 		
-		this.InputControlCube.appearance.enabled = false;
-		this.InputControlCubeText.appearance.enabled = false;
+	}
+
+	private CreateVictoryAnimation()
+	{
+		//First, hide game board and create RBs from filled blocks
+		this.GameBoard.forEach(boardRow => {
+			boardRow.forEach(cube => {
+				cube.actor.appearance.enabled = false;
+				if(cube.currentState === BlockState.Filled)
+				{
+					let localPos = cube.actor.transform.local.position;
+					localPos.z += .2;
+					//Create RB
+					let localRB = Actor.Create(this.context, {
+						actor: {
+							collider: {geometry: {shape: ColliderType.Box}},
+							transform: {
+								local: {position: localPos , scale:{ x: .1, y: .1, z: .1}}
+							},
+							
+							rigidBody: {
+								enabled: true, 
+								velocity: {x: 0, y: 2, z: 10},
+								detectCollisions: true, 
+								
+								collisionDetectionMode: CollisionDetectionMode.ContinuousDynamic },
+							appearance: {
+								meshId: this.CubeMesh.id,
+								materialId: this.BlackSolidMaterial.id
+							}
+						}
+					});
+					this.SceneEffects.push(localRB);
+				}
+			});
+		});
+
+
+
 	}
 
 	private SetCubeState(actor: Actor, state: BlockState)
@@ -846,6 +1120,8 @@ export default class PicrossApp {
 		actor.transform.local.rotation.set(0,0,0,1);
 		//this.AnimateActorLocalRotation(actor, Quaternion.RotationAxis(Vector3.Right(), 90));
 	}
+
+	//#endregion
 }
 
 /**
