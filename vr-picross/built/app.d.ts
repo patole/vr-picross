@@ -72,5 +72,6 @@ export default class PicrossApp {
     private FillInAnimation;
     private ResetAnimation;
     private RuleOutAnimation;
+    private generateSpinFrames;
 }
 //# sourceMappingURL=app.d.ts.map

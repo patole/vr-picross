@@ -25,11 +25,11 @@ const mixed_reality_extension_sdk_1 = require("@microsoft/mixed-reality-extensio
 //4: Labels:
 /// - Floating labels next to cube array
 /// - Allow crossing out with interaction
+/// Tutorial set
 //Todo for Picross:
 //4: Labels:
 /// - Auto cross out on filling the row correctly (Pushed)
 //4.5 Sets of puzzles, scripting? (On start, on end, maybe more plug and play animations for cube states?) 
-/// Tutorial set
 /// Random fast-paced 5x5 sets
 //5: Wow factor
 //// - Rigid Body on victory (DONE)
@@ -412,12 +412,13 @@ class PicrossApp {
             for (let x = 0; x < this.VictoryCondition[y].length; x++) {
                 const gamePiece = this.GameBoard[y][x];
                 gamePiece.currentState = (this.VictoryCondition[y][x] === 1) ? BlockState.Filled : BlockState.Empty;
-                this.SetCubeState(gamePiece.actor, gamePiece.currentState);
+                this.SetCubeState(gamePiece, gamePiece.currentState);
             }
         }
     }
     CreateInGameInputControl() {
-        this.InputControlCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+        this.InputControlCube = new GameBoardPiece();
+        this.InputControlCube.actor = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
                 transform: {
@@ -430,11 +431,38 @@ class PicrossApp {
                 }
             }
         });
-        this.SceneActors.push(this.InputControlCube);
+        this.InputControlCube.actor.createAnimation(
+        // The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
+        "FillIn", {
+            keyframes: [{
+                    time: 0,
+                    value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.Identity() } } }
+                }],
+            wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once
+        }).then(anim => { this.InputControlCube.fillin = anim; });
+        this.InputControlCube.actor.createAnimation(
+        // The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
+        "Erase", {
+            keyframes: [{
+                    time: 0,
+                    value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.Identity() } } }
+                }],
+            wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once
+        }).then(anim => { this.InputControlCube.erase = anim; });
+        this.InputControlCube.actor.createAnimation(
+        // The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
+        "RuleOut", {
+            keyframes: [{
+                    time: 0,
+                    value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.Identity() } } }
+                }],
+            wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once,
+        }).then(anim => { this.InputControlCube.ruleout = anim; });
+        this.SceneActors.push(this.InputControlCube.actor);
         this.InputControlCubeText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 name: 'Text',
-                parentId: this.InputControlCube.id,
+                parentId: this.InputControlCube.actor.id,
                 transform: {
                     local: { position: { x: 0, y: 1, z: 0 } }
                 },
@@ -449,7 +477,7 @@ class PicrossApp {
         this.SceneActors.push(this.InputControlCubeText);
         // Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
         // Button behaviors have two pairs of events: hover start/stop, and click start/stop.
-        const inputControlBehavior = this.InputControlCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        const inputControlBehavior = this.InputControlCube.actor.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         inputControlBehavior.onClick(_ => {
             switch (this.CurrentInputState) {
                 case BlockState.Filled:
@@ -544,11 +572,29 @@ class PicrossApp {
                         }
                     }
                 });
+                cube.actor.createAnimation(
+                // The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
+                "FillIn", {
+                    keyframes: this.generateSpinFrames(.2, mixed_reality_extension_sdk_1.Vector3.Up()),
+                    wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once
+                }).then(anim => { cube.fillin = anim; });
+                cube.actor.createAnimation(
+                // The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
+                "Erase", {
+                    keyframes: this.generateSpinFrames(.2, mixed_reality_extension_sdk_1.Vector3.Down()),
+                    wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once
+                }).then(anim => { cube.erase = anim; });
+                cube.actor.createAnimation(
+                // The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
+                "RuleOut", {
+                    keyframes: this.generateSpinFrames(.2, mixed_reality_extension_sdk_1.Vector3.Right()),
+                    wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once,
+                }).then(anim => { cube.ruleout = anim; });
                 const gameBoardBehavior = cube.actor.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
                 gameBoardBehavior.onClick(_ => {
                     if (cube.currentState !== this.CurrentInputState) {
                         cube.currentState = this.CurrentInputState;
-                        this.SetCubeState(cube.actor, cube.currentState);
+                        this.SetCubeState(cube, cube.currentState);
                     }
                     this.CheckVictoryPattern();
                 });
@@ -567,7 +613,7 @@ class PicrossApp {
         }
     }
     CreateEditInputControl() {
-        this.InputControlCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+        this.InputControlCube.actor = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
                 transform: {
@@ -580,11 +626,11 @@ class PicrossApp {
                 }
             }
         });
-        this.SceneActors.push(this.InputControlCube);
+        this.SceneActors.push(this.InputControlCube.actor);
         this.InputControlCubeText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 name: 'Text',
-                parentId: this.InputControlCube.id,
+                parentId: this.InputControlCube.actor.id,
                 transform: {
                     local: { position: { x: 0, y: 1, z: 0 } }
                 },
@@ -599,7 +645,7 @@ class PicrossApp {
         this.SceneActors.push(this.InputControlCubeText);
         // Set up cursor interaction. We add the input behavior ButtonBehavior to the cube.
         // Button behaviors have two pairs of events: hover start/stop, and click start/stop.
-        const inputControlBehavior = this.InputControlCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        const inputControlBehavior = this.InputControlCube.actor.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         inputControlBehavior.onClick(_ => {
             switch (this.CurrentInputState) {
                 case BlockState.Filled:
@@ -766,7 +812,7 @@ class PicrossApp {
                 }
                 else {
                     this.CreateVictoryText();
-                    this.InputControlCube.appearance.enabled = false;
+                    this.InputControlCube.actor.appearance.enabled = false;
                     this.InputControlCubeText.appearance.enabled = false;
                 }
             }
@@ -835,16 +881,16 @@ class PicrossApp {
             });
         });
     }
-    SetCubeState(actor, state) {
+    SetCubeState(cube, state) {
         switch (state) {
             case BlockState.Filled:
-                this.FillInAnimation(actor);
+                this.FillInAnimation(cube);
                 break;
             case BlockState.Empty:
-                this.ResetAnimation(actor);
+                this.ResetAnimation(cube);
                 break;
             case BlockState.RuledOut:
-                this.RuleOutAnimation(actor);
+                this.RuleOutAnimation(cube);
                 break;
         }
     }
@@ -866,20 +912,29 @@ class PicrossApp {
         let TargetRotation = CurrentRotation.add(localRotation);
         actor.animateTo({ transform: { local: { rotation: TargetRotation } } }, dt, mixed_reality_extension_sdk_1.AnimationEaseCurves.EaseOutSine);
     }
-    FillInAnimation(actor) {
-        actor.appearance.materialId = this.BlackSolidMaterial.id;
-        actor.transform.local.rotation.set(0, 0, 0, 1);
+    FillInAnimation(cube) {
+        cube.actor.appearance.materialId = this.BlackSolidMaterial.id;
+        cube.actor.enableAnimation("FillIn");
         //this.AnimateActorLocalRotation(actor, Quaternion.RotationAxis(Vector3.Up(), 90));
     }
-    ResetAnimation(actor) {
-        actor.appearance.materialId = this.WhiteSolidMaterial.id;
-        actor.transform.local.rotation.set(0, 0, 0, 1);
+    ResetAnimation(cube) {
+        cube.actor.appearance.materialId = this.WhiteSolidMaterial.id;
+        cube.actor.enableAnimation("Erase");
         //this.AnimateActorLocalRotation(actor, Quaternion.RotationAxis(Vector3.Up(), -90));
     }
-    RuleOutAnimation(actor) {
-        actor.appearance.materialId = this.GreyTransparentMaterial.id;
-        actor.transform.local.rotation.set(0, 0, 0, 1);
+    RuleOutAnimation(cube) {
+        cube.actor.appearance.materialId = this.GreyTransparentMaterial.id;
+        cube.actor.enableAnimation("RuleOut");
         //this.AnimateActorLocalRotation(actor, Quaternion.RotationAxis(Vector3.Right(), 90));
+    }
+    generateSpinFrames(duration, axis) {
+        return [{
+                time: 0,
+                value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.Identity() } } }
+            }, {
+                time: duration,
+                value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.RotationAxis(axis, Math.PI / 2) } } },
+            }];
     }
 }
 exports.default = PicrossApp;
