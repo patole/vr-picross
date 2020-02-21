@@ -103,6 +103,7 @@ class PicrossApp {
     constructor(context, baseUrl) {
         this.context = context;
         this.baseUrl = baseUrl;
+        this.timerComplete = false;
         //defs
         this.RandomBoards = [
             [
@@ -204,6 +205,11 @@ class PicrossApp {
         this.EditMode = false;
         this.CubeAssets = new mixed_reality_extension_sdk_1.AssetContainer(context);
         this.context.onStarted(() => this.started());
+    }
+    delay(milliseconds) {
+        return new Promise((resolve) => {
+            setTimeout(() => resolve(), milliseconds);
+        });
     }
     //#endregion
     //#region Codes
@@ -333,12 +339,13 @@ class PicrossApp {
         });
         const speedCubeButt = this.SpeedRunCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         speedCubeButt.onClick(_ => {
+            this.CountdownStarted = false;
+            this.timerComplete = false;
             this.SetupSpeedrunSet();
             this.PuzzleIndex = 0;
             this.ResetVictoryCondition(this.CurrentPuzzleSet.puzzles[0]);
             this.DestroyScene();
             this.StartChallenge();
-            this.CountdownStarted = false;
         });
         this.SceneActors.push(this.SpeedRunCube);
         this.SpeedRunText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
@@ -444,6 +451,11 @@ class PicrossApp {
             [0, 0, 1]];
         this.CurrentPuzzleSet.puzzles = [newPuzzle0, newPuzzle1, newPuzzle2];
     }
+    async ChallengeTimer() {
+        await this.delay(30 * 1000);
+        this.timerComplete = true;
+        return;
+    }
     SetupChallengeUI() {
         this.CountdownClock = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
@@ -473,27 +485,27 @@ class PicrossApp {
             }
         });
         this.CountdownClockHand.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior).onClick(_ => {
-            if (!this.CountdownStarted) {
-                this.CreateInGameInputControl();
-                this.CreateMainMenuControl();
-                this.CreateGameBoard();
-                this.SetCubeState(this.InputControlCube, BlockState.Filled);
-                this.UpdateControlText();
-                this.CreateHints();
-                this.CountdownAnimation.isPlaying = true;
-                this.CountdownStarted = true;
-            }
         });
         this.CountdownClock.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior).onClick(_ => {
             if (!this.CountdownStarted) {
                 this.CountdownAnimation.isPlaying = true;
+                this.CountdownStarted = true;
                 this.CreateInGameInputControl();
                 this.CreateMainMenuControl();
                 this.CreateGameBoard();
+                this.CurrentInputState = BlockState.Filled;
                 this.SetCubeState(this.InputControlCube, BlockState.Filled);
                 this.UpdateControlText();
                 this.CreateHints();
-                this.CountdownStarted = true;
+                this.ChallengeTimer().then(_ => {
+                    this.CreateFailureAnimation();
+                    this.CountdownAnimation.stop();
+                    this.DestroyGameBoard();
+                    this.DestroyHints();
+                    this.CreateFailureText();
+                    this.InputControlCube.actor.appearance.enabled = false;
+                    this.InputControlCubeText.appearance.enabled = false;
+                }); //Wait for countdown inside here!!
             }
         });
         this.CountdownClock.createAnimation("Countdown", {
@@ -510,14 +522,6 @@ class PicrossApp {
             wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once
         });
         this.CountdownAnimation = this.CountdownClock.animationsByName.get("Countdown");
-        this.AnimPromise = this.CountdownAnimation.finished().then(value => {
-            this.DestroyGameBoard();
-            this.DestroyHints();
-            this.CreateFailureAnimation();
-            this.CreateFailureText();
-            this.InputControlCube.actor.appearance.enabled = false;
-            this.InputControlCubeText.appearance.enabled = false;
-        });
         // this.CountdownClock.createAnimation("Countdown", {
         // 	keyframes: this.generateSpinFrames(30, Vector3.Forward()),
         // 	wrapMode: AnimationWrapMode.Once
@@ -725,6 +729,7 @@ class PicrossApp {
         const MainMenuControlBehavior = this.MainMenuCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         MainMenuControlBehavior.onClick(_ => {
             this.CreateMainMenu();
+            this.timerComplete = false;
         });
         this.MainMenuText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
@@ -871,6 +876,7 @@ class PicrossApp {
                     this.CurrentInputState = BlockState.Filled;
                     break;
             }
+            this.CurrentInputState = BlockState.Filled;
             this.SetCubeState(this.InputControlCube, this.CurrentInputState);
             this.UpdateControlText();
         });
@@ -881,6 +887,7 @@ class PicrossApp {
         this.CreateMainMenuControl();
         this.CreateGameBoard();
         this.CreateSaveCube();
+        this.CurrentInputState = BlockState.Filled;
         this.SetCubeState(this.InputControlCube, BlockState.Filled);
         this.UpdateControlText();
     }
@@ -889,6 +896,7 @@ class PicrossApp {
         this.CreateInGameInputControl();
         this.CreateMainMenuControl();
         this.CreateGameBoard();
+        this.CurrentInputState = BlockState.Filled;
         this.SetCubeState(this.InputControlCube, BlockState.Filled);
         this.UpdateControlText();
         this.CreateHints();
@@ -999,14 +1007,6 @@ class PicrossApp {
         }
     }
     CheckVictoryPattern() {
-        if (this.CountdownStarted && this.CountdownAnimation.time >= 30) {
-            this.DestroyGameBoard();
-            this.DestroyHints();
-            this.CreateFailureAnimation();
-            this.CreateFailureText();
-            this.InputControlCube.actor.appearance.enabled = false;
-            this.InputControlCubeText.appearance.enabled = false;
-        }
         if (!this.EditMode) {
             let victory = true;
             for (let i = 0; i < this.GameBoard.length; i++) {
@@ -1075,13 +1075,13 @@ class PicrossApp {
         });
         this.SceneEffects.push(this.VictoryText);
     }
-    CreateFailureAnimation() {
-        let MiddleBoardVec = this.GameBoard[Math.floor(this.CurrentHeight / 2)][Math.floor(this.CurrentWidth) / 2].actor.transform.local.position;
+    async CreateFailureAnimation() {
+        let MiddleBoardVec = this.GameBoard[2][2].actor.transform.app.position; //this.GameBoard[Math.floor(this.CurrentHeight/2)][Math.floor(this.CurrentWidth)/2].actor.transform.local.position;
         this.GameBoard.forEach(boardRow => {
             boardRow.forEach(cube => {
                 cube.actor.appearance.enabled = false;
-                let localPos = cube.actor.transform.local.position;
-                let velocityVec = (localPos.subtract(MiddleBoardVec));
+                let localPos = cube.actor.transform.app.position;
+                let velocityVec = new mixed_reality_extension_sdk_1.Vector3((Math.random() * 2) - 1, (Math.random() * 2) - 1, (Math.random() * 2) - 1);
                 //Create RB
                 let localRB = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
                     actor: {
@@ -1097,7 +1097,7 @@ class PicrossApp {
                         },
                         appearance: {
                             meshId: this.CubeMesh.id,
-                            materialId: this.BlackSolidMaterial.id
+                            materialId: cube.actor.appearance.material.id
                         }
                     }
                 });
@@ -1106,6 +1106,21 @@ class PicrossApp {
         });
     }
     CreateFailureText() {
+        this.VictoryText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'VictoryText',
+                transform: {
+                    local: { position: { x: 0, y: 0, z: 0 } }
+                },
+                text: {
+                    contents: "TOO SLOW :(",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.BottomCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1.2
+                }
+            }
+        });
+        this.SceneEffects.push(this.VictoryText);
     }
     CreateVictoryAnimation() {
         //First, hide game board and create RBs from filled blocks

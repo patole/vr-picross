@@ -150,7 +150,19 @@ class HintSet
 	public solved = false;
 }
 
+
 export default class PicrossApp {
+	delay(milliseconds: number): Promise<void> {
+
+		return new Promise<void>((resolve) => {
+	
+			setTimeout(() => resolve(), milliseconds);
+	
+		});
+	
+	}
+
+	private timerComplete = false;
 
 	//Constructor
 	constructor(private context: Context, private baseUrl: string) {
@@ -420,12 +432,14 @@ export default class PicrossApp {
 
 		const speedCubeButt = this.SpeedRunCube.setBehavior(ButtonBehavior);
 		speedCubeButt.onClick(_ => {
+			this.CountdownStarted = false;
+			this.timerComplete = false;
 			this.SetupSpeedrunSet();
 			this.PuzzleIndex = 0;
 			this.ResetVictoryCondition(this.CurrentPuzzleSet.puzzles[0]);
 			this.DestroyScene();
 			this.StartChallenge();
-			this.CountdownStarted = false;
+
 		});
 
 		this.SceneActors.push(this.SpeedRunCube);
@@ -559,6 +573,15 @@ export default class PicrossApp {
 		this.CurrentPuzzleSet.puzzles = [newPuzzle0, newPuzzle1, newPuzzle2];
 	}
 
+	private async ChallengeTimer()
+	{
+		await this.delay(30 * 1000);
+
+		this.timerComplete = true;
+
+		return;
+	}
+
 	private SetupChallengeUI()
 	{
 		this.CountdownClock = Actor.Create(this.context, {
@@ -591,34 +614,41 @@ export default class PicrossApp {
 		});
 
 		this.CountdownClockHand.setBehavior(ButtonBehavior).onClick( _ => {
-			if(!this.CountdownStarted)
-			{
-				this.CreateInGameInputControl();
-				this.CreateMainMenuControl();
-				this.CreateGameBoard();
-		
-				this.SetCubeState(this.InputControlCube, BlockState.Filled);
-				this.UpdateControlText();
-		
-				this.CreateHints();
-				this.CountdownAnimation.isPlaying = true;
-				this.CountdownStarted = true;
-			}
+
 		});
 
 		this.CountdownClock.setBehavior(ButtonBehavior).onClick( _ => {
 			if(!this.CountdownStarted)
 			{
 				this.CountdownAnimation.isPlaying = true;
+				this.CountdownStarted = true;
 				this.CreateInGameInputControl();
 				this.CreateMainMenuControl();
 				this.CreateGameBoard();
+
+				this.CurrentInputState = BlockState.Filled;
 		
 				this.SetCubeState(this.InputControlCube, BlockState.Filled);
 				this.UpdateControlText();
 		
 				this.CreateHints();
-				this.CountdownStarted = true;
+
+
+				this.ChallengeTimer().then(_ =>{	
+					this.CreateFailureAnimation();
+
+					this.CountdownAnimation.stop();
+
+					this.DestroyGameBoard();
+					this.DestroyHints();
+					
+					this.CreateFailureText();
+					this.InputControlCube.actor.appearance.enabled = false;
+					this.InputControlCubeText.appearance.enabled = false;
+				}); //Wait for countdown inside here!!
+
+
+				
 			}
 		});
 
@@ -639,14 +669,6 @@ export default class PicrossApp {
 		});
 
 		this.CountdownAnimation = this.CountdownClock.animationsByName.get("Countdown");
-		this.AnimPromise = this.CountdownAnimation.finished().then(value =>{
-					this.DestroyGameBoard();
-					this.DestroyHints();
-					this.CreateFailureAnimation();
-					this.CreateFailureText();
-					this.InputControlCube.actor.appearance.enabled = false;
-					this.InputControlCubeText.appearance.enabled = false;
-				});
 
 		// this.CountdownClock.createAnimation("Countdown", {
 		// 	keyframes: this.generateSpinFrames(30, Vector3.Forward()),
@@ -893,6 +915,7 @@ export default class PicrossApp {
 		const MainMenuControlBehavior  = this.MainMenuCube.setBehavior(ButtonBehavior);
 		MainMenuControlBehavior.onClick(_ => {
 			this.CreateMainMenu();
+			this.timerComplete = false;
 		});
 		this.MainMenuText = Actor.Create(this.context, {
 			actor: {
@@ -1071,6 +1094,8 @@ export default class PicrossApp {
 					break;
 			}
 
+			this.CurrentInputState = BlockState.Filled;
+
 			this.SetCubeState(this.InputControlCube, this.CurrentInputState);
 			this.UpdateControlText();
 		});
@@ -1085,6 +1110,8 @@ export default class PicrossApp {
 		this.CreateGameBoard();
 		this.CreateSaveCube();
 
+		this.CurrentInputState = BlockState.Filled;
+
 		this.SetCubeState(this.InputControlCube, BlockState.Filled);
 		this.UpdateControlText();
 	}
@@ -1098,6 +1125,8 @@ export default class PicrossApp {
 		this.CreateInGameInputControl();
 		this.CreateMainMenuControl();
 		this.CreateGameBoard();
+
+		this.CurrentInputState = BlockState.Filled;
 
 		this.SetCubeState(this.InputControlCube, BlockState.Filled);
 		this.UpdateControlText();
@@ -1244,15 +1273,6 @@ export default class PicrossApp {
 
 	private CheckVictoryPattern()
 	{
-		if(this.CountdownStarted && this.CountdownAnimation.time >= 30)
-		{
-			this.DestroyGameBoard();
-			this.DestroyHints();
-			this.CreateFailureAnimation();
-			this.CreateFailureText();
-			this.InputControlCube.actor.appearance.enabled = false;
-			this.InputControlCubeText.appearance.enabled = false;
-		}
 		if(!this.EditMode)
 		{
 			let victory = true;
@@ -1342,14 +1362,14 @@ export default class PicrossApp {
 		
 	}
 
-	private CreateFailureAnimation()
+	private async CreateFailureAnimation()
 	{
-		let MiddleBoardVec = this.GameBoard[Math.floor(this.CurrentHeight/2)][Math.floor(this.CurrentWidth)/2].actor.transform.local.position;
+		let MiddleBoardVec = this.GameBoard[2][2].actor.transform.app.position;//this.GameBoard[Math.floor(this.CurrentHeight/2)][Math.floor(this.CurrentWidth)/2].actor.transform.local.position;
 		this.GameBoard.forEach(boardRow => {
 			boardRow.forEach(cube => {
 				cube.actor.appearance.enabled = false;
-				let localPos = cube.actor.transform.local.position;
-				let velocityVec = (localPos.subtract(MiddleBoardVec));
+				let localPos = cube.actor.transform.app.position;
+				let velocityVec = new Vector3((Math.random() * 2) - 1, (Math.random() * 2) - 1, (Math.random() * 2) - 1,);
 				//Create RB
 				let localRB = Actor.Create(this.context, {
 					actor: {
@@ -1366,7 +1386,7 @@ export default class PicrossApp {
 							collisionDetectionMode: CollisionDetectionMode.ContinuousDynamic },
 						appearance: {
 							meshId: this.CubeMesh.id,
-							materialId: this.BlackSolidMaterial.id
+							materialId: cube.actor.appearance.material.id
 						}
 					}
 				});
@@ -1377,7 +1397,23 @@ export default class PicrossApp {
 
 	private CreateFailureText()
 	{
+		this.VictoryText = Actor.Create(this.context, {
+			actor: {
+				name: 'VictoryText',
 
+				transform: {
+					local: { position: { x: 0, y: 0, z: 0 } }
+				},
+				text: {
+					contents: "TOO SLOW :(",
+					anchor: TextAnchorLocation.BottomCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1.2
+				}
+			}
+		});
+
+		this.SceneEffects.push( this.VictoryText );
 	}
 
 	private CreateVictoryAnimation()

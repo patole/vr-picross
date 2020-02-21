@@ -1,14 +1,16 @@
-FROM node:10.16-alpine
-WORKDIR /opt/mre
+FROM node:8.12.0-alpine
 
-COPY package*.json ./
-RUN ["npm", "install", "--unsafe-perm"]
+WORKDIR /opt/app
 
-COPY tsconfig.json ./
-COPY src ./src/
-RUN ["npm", "run", "build-only"]
+ENV PORT=80
 
-COPY public ./public/
+RUN echo 'set -e' >> /boot.sh
 
-EXPOSE 3901/tcp
-CMD ["npm", "start"]
+# daemon for cron jobs
+RUN echo 'crond' >> /boot.sh
+# RUN echo 'crontab .openode.cron' >> /boot.sh
+
+RUN echo 'npm install --production' >> /boot.sh
+
+# npm start, make sure to have a start attribute in "scripts" in package.json
+CMD sh /boot.sh && npm start

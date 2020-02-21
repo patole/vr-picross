@@ -6,6 +6,8 @@ import { Context } from '@microsoft/mixed-reality-extension-sdk';
 export default class PicrossApp {
     private context;
     private baseUrl;
+    delay(milliseconds: number): Promise<void>;
+    private timerComplete;
     constructor(context: Context, baseUrl: string);
     private RandomBoards;
     private SceneActors;
@@ -54,6 +56,7 @@ export default class PicrossApp {
     private started;
     private SetupStarterPicrossSet;
     private SetupTutorialPicrossSet;
+    private ChallengeTimer;
     private SetupChallengeUI;
     private ResetVictoryCondition;
     private DefaultVictoryCondition;
