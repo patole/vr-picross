@@ -52,20 +52,29 @@ import { CipherNameAndProtocol } from 'tls';
 /// - Allow crossing out with interaction
 /// Tutorial set
 
+//5: Wow factor
+//// - Rigid Body on victory (DONE)
+/// - Sounds
+
 //Todo for Picross:
+
+
+//4.5 Sets of puzzles, scripting? 
+/// Random fast-paced 5x5 sets
+
+
+
+//Pushed for this release:
+
 
 //4: Labels:
 
 /// - Auto cross out on filling the row correctly (Pushed)
 
-//4.5 Sets of puzzles, scripting? (On start, on end, maybe more plug and play animations for cube states?) 
+//5: Wow
+//Sounds
 
-/// Random fast-paced 5x5 sets
 
-//5: Wow factor
-//// - Rigid Body on victory (DONE)
-/// - Sounds
-/// - Animations?
 
 class PicrossPuzzle {
 	public width = 0;
@@ -193,6 +202,8 @@ export default class PicrossApp {
 	private CurrentPuzzleSet: PicrossPuzzleSet = null;
 	private PuzzleIndex = 0;
 
+	private CustomPuzzleSet: PicrossPuzzleSet = null;
+
 	//Template for victory
 	private VictoryCondition: int[][] = null;
 
@@ -214,7 +225,9 @@ export default class PicrossApp {
 	private CreateMainMenu()
 	{
 		this.DestroyScene();
-
+		this.DestroyGameBoard();
+		this.DestroyHints();
+		
 		this.StartCube = Actor.Create(this.context, {
             actor: {
 				collider: {geometry: {shape: ColliderType.Box}},
@@ -311,7 +324,7 @@ export default class PicrossApp {
 		tutCubeButt.onClick(_ => {
 			this.SetupTutorialPicrossSet();
 			this.PuzzleIndex = 0;
-			this.ResetVictoryCondition();
+			this.ResetVictoryCondition(this.CurrentPuzzleSet.puzzles[0]);
 			this.StartGame();
 		});
 
@@ -391,7 +404,7 @@ export default class PicrossApp {
 
         this.CubeMesh = this.CubeAssets.createBoxMesh("BoxMesh", 1, 1, 1);
 
-		this.DefaultVictoryCondition();
+		this.SetupStarterPicrossSet();
 
 		this.CreateMainMenu();
 		//this.CreateGameBoard();
@@ -399,7 +412,7 @@ export default class PicrossApp {
 
 	private SetupStarterPicrossSet()
 	{
-		this.CurrentPuzzleSet = new PicrossPuzzleSet();
+		this.CustomPuzzleSet = new PicrossPuzzleSet();
 		let newPuzzle: PicrossPuzzle = new PicrossPuzzle();
 		newPuzzle.height = 5;
 		newPuzzle.width = 5;
@@ -408,7 +421,8 @@ export default class PicrossApp {
 								, [ 1, 0, 1, 0, 1 ]
 								, [ 1, 0, 0, 0, 1 ]
 								, [ 1, 1, 1, 1, 1 ]];
-		this.CurrentPuzzleSet.puzzles = [newPuzzle];
+
+		this.CustomPuzzleSet.puzzles = [newPuzzle];
 	}
 
 	private SetupTutorialPicrossSet()
@@ -419,13 +433,11 @@ export default class PicrossApp {
 		newPuzzle0.width = 1;
 		newPuzzle0.answerKey =	[[ 1 ]];
 
-		this.CurrentPuzzleSet = new PicrossPuzzleSet();
 		let newPuzzle1: PicrossPuzzle = new PicrossPuzzle();
 		newPuzzle1.height = 1;
 		newPuzzle1.width = 3;
 		newPuzzle1.answerKey =	[[0, 1, 0]];
 
-		this.CurrentPuzzleSet = new PicrossPuzzleSet();
 		let newPuzzle2: PicrossPuzzle = new PicrossPuzzle();
 		newPuzzle2.height = 3;
 		newPuzzle2.width = 3;
@@ -441,25 +453,25 @@ export default class PicrossApp {
 
 	}
 
-	private ResetVictoryCondition()
+	private ResetVictoryCondition(puzzle: PicrossPuzzle)
 	{
-		this.VictoryCondition = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].answerKey;
-		this.CurrentWidth = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].width;
-		this.CurrentHeight = this.CurrentPuzzleSet.puzzles[this.PuzzleIndex].height;
+		this.VictoryCondition = puzzle.answerKey;
+		this.CurrentWidth = puzzle.width;
+		this.CurrentHeight = puzzle.height;
 	}
 
 	private DefaultVictoryCondition()
 	{
-		this.SetupStarterPicrossSet();
+		this.CurrentPuzzleSet = this.CustomPuzzleSet;
 		this.PuzzleIndex = 0;
-		this.ResetVictoryCondition();
+		this.ResetVictoryCondition(this.CustomPuzzleSet.puzzles[0]);
 	}
 
 	private EditGame()
 	{
-		this.EditMode = true;
 		this.SetupEditUI();
-		this.UpdateBoardFromVictory();
+		this.EditMode = true;
+		this.UpdateBoardFromCustom();
 	}
 
 	private StartGame()
@@ -508,27 +520,36 @@ export default class PicrossApp {
 		// Button behaviors have two pairs of events: hover start/stop, and click start/stop.
 		const inputControlBehavior = this.SaveCube.setBehavior(ButtonBehavior);
 		inputControlBehavior.onClick(_ => {
-			this.UpdateVictoryFromBoard();
+			this.UpdateCustomFromBoard();
 		});		
 	}
 
-	private UpdateVictoryFromBoard()
+	private UpdateCustomFromBoard()
 	{
-		this.ResetVictoryCondition();
+		let puzzle = this.CustomPuzzleSet.puzzles[0];
+		puzzle.height = this.CurrentHeight;
+		puzzle.width = this.CurrentWidth;
+		puzzle.answerKey = new Array(puzzle.height);
+		
 		for (let y = 0; y < this.GameBoard.length; y++) {
+			puzzle.answerKey[y] = new Array(puzzle.width);
 			for (let x = 0; x < this.GameBoard[y].length; x++) {
 				const cube = this.GameBoard[y][x];
-				this.VictoryCondition[y][x] = (cube.currentState === BlockState.Filled) ? 1 : 0;
+				puzzle.answerKey[y][x] = (cube.currentState === BlockState.Filled) ? 1 : 0;
 			}
 		}
 	}
 
-	private UpdateBoardFromVictory()
+	private UpdateBoardFromCustom()
 	{
-		for (let y = 0; y < this.VictoryCondition.length; y++) {
-			for (let x = 0; x < this.VictoryCondition[y].length; x++) {
+		let puzzle = this.CustomPuzzleSet.puzzles[0];
+		this.CurrentWidth = puzzle.width;
+		this.CurrentHeight = puzzle.height;
+		let answerKey = this.CustomPuzzleSet.puzzles[0].answerKey;
+		for (let y = 0; y < answerKey.length; y++) {
+			for (let x = 0; x < answerKey[y].length; x++) {
 				const gamePiece = this.GameBoard[y][x];
-				gamePiece.currentState = (this.VictoryCondition[y][x] === 1) ? BlockState.Filled : BlockState.Empty;
+				gamePiece.currentState = (answerKey[y][x] === 1) ? BlockState.Filled : BlockState.Empty;
 				this.SetCubeState(gamePiece, gamePiece.currentState);
 			}
 		}
@@ -667,6 +688,8 @@ export default class PicrossApp {
 
 	private DestroyHints()
 	{
+		if(this.HorizontalHints && this.VerticalHints)
+		{
 		this.HorizontalHints.forEach(hintset => {
 			hintset.hints.forEach(hint => {
 				hint.BoxActor.destroy();
@@ -681,14 +704,18 @@ export default class PicrossApp {
 			});
 		});
 	}
+	}
 
 	private DestroyGameBoard()
 	{
-		this.GameBoard.forEach(array => {
-			array.forEach(element => {
-				element.actor.destroy();
+		if(this.GameBoard)
+		{
+			this.GameBoard.forEach(array => {
+				array.forEach(element => {
+					element.actor.destroy();
+				});
 			});
-		});
+		}
 	}
 
 	private CreateGameBoard()
@@ -954,12 +981,11 @@ export default class PicrossApp {
 			this.VerticalHints.push(hints);
 			hints.isHorizontal = false;
 			
-			let currentGroupID = 1;
+			let currentGroupID = 1;5
 			let currentGroupCount = 0;
 			let numGroups = 0;
 
-			//Search right to left and add coresponding hints
-			for (let y = this.CurrentHeight - 1; y >= 0; y--) {
+			for (let y = 0; y < this.CurrentHeight; y++) {
 				const element = this.VictoryCondition[y][x];
 				if(element === currentGroupID)
 				{
@@ -999,12 +1025,12 @@ export default class PicrossApp {
 				for (let j = 0; j < this.GameBoard[i].length; j++) {
 					const element = this.GameBoard[i][j];
 					let condition = this.VictoryCondition[i][j];
-					if(condition === 0 && element.currentState !== BlockState.Empty)
+					if(condition === 0 && element.currentState == BlockState.Filled)
 					{
 						victory = false;
 						break;
 					}
-					else if(condition === 1 && element.currentState !== BlockState.Filled)
+					else if(condition === 1 && element.currentState == BlockState.Empty)
 					{
 						victory = false;
 						break;
@@ -1020,7 +1046,7 @@ export default class PicrossApp {
 				
 				if(++this.PuzzleIndex < this.CurrentPuzzleSet.puzzles.length)
 				{
-					this.ResetVictoryCondition();
+					this.ResetVictoryCondition(this.CurrentPuzzleSet.puzzles[this.PuzzleIndex]);
 					this.CreateGameBoard();
 					this.CreateHints();
 				}

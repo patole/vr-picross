@@ -31,6 +31,7 @@ export default class PicrossApp {
     private VictoryText;
     private CurrentPuzzleSet;
     private PuzzleIndex;
+    private CustomPuzzleSet;
     private VictoryCondition;
     private GameBoard;
     private HorizontalHints;
@@ -50,8 +51,8 @@ export default class PicrossApp {
     private EditGame;
     private StartGame;
     private CreateSaveCube;
-    private UpdateVictoryFromBoard;
-    private UpdateBoardFromVictory;
+    private UpdateCustomFromBoard;
+    private UpdateBoardFromCustom;
     private CreateInGameInputControl;
     private CreateMainMenuControl;
     private DestroyHints;
