@@ -258,6 +258,8 @@ export default class PicrossApp {
 	private SaveCube: Actor = null;
 	private SaveText: Actor = null;
 
+	private CountdownPromise: Promise<void> = null;
+
 	//Victory UI
 	private VictoryText: Actor = null;
 
@@ -286,6 +288,9 @@ export default class PicrossApp {
 	private CurrentInputState: BlockState = BlockState.Filled;
 
 	private EditMode = false;
+
+	//HACK: Track countdown plays
+	private CountdownStarts = 0;
 //#endregion
 
 //#region Codes
@@ -575,11 +580,7 @@ export default class PicrossApp {
 
 	private async ChallengeTimer()
 	{
-		await this.delay(30 * 1000);
-
-		this.timerComplete = true;
-
-		return;
+		return await this.delay(30 * 1000);
 	}
 
 	private SetupChallengeUI()
@@ -633,21 +634,24 @@ export default class PicrossApp {
 		
 				this.CreateHints();
 
+				let x = ++this.CountdownStarts;
 
-				this.ChallengeTimer().then(_ =>{	
-					this.CreateFailureAnimation();
+				this.CountdownPromise = this.ChallengeTimer().then(_ =>{
+						
+					if(this.CountdownStarted && !this.timerComplete && this.CountdownStarts == x)
+					{
+						this.CreateFailureAnimation();
 
-					this.CountdownAnimation.stop();
+						this.CountdownAnimation.stop();
 
-					this.DestroyGameBoard();
-					this.DestroyHints();
-					
-					this.CreateFailureText();
-					this.InputControlCube.actor.appearance.enabled = false;
-					this.InputControlCubeText.appearance.enabled = false;
+						this.DestroyGameBoard();
+						this.DestroyHints();
+						
+						this.CreateFailureText();
+						this.InputControlCube.actor.appearance.enabled = false;
+						this.InputControlCubeText.appearance.enabled = false;
+					}
 				}); //Wait for countdown inside here!!
-
-
 				
 			}
 		});
@@ -915,7 +919,8 @@ export default class PicrossApp {
 		const MainMenuControlBehavior  = this.MainMenuCube.setBehavior(ButtonBehavior);
 		MainMenuControlBehavior.onClick(_ => {
 			this.CreateMainMenu();
-			this.timerComplete = false;
+			this.timerComplete = true;
+			this.CountdownStarted = false;
 		});
 		this.MainMenuText = Actor.Create(this.context, {
 			actor: {
@@ -1298,6 +1303,11 @@ export default class PicrossApp {
 				this.CreateVictoryAnimation();
 				this.DestroyGameBoard();
 				this.DestroyHints();
+
+				if(this.CountdownPromise)
+				{
+					this.CountdownPromise = null;
+				}
 				
 				if(++this.PuzzleIndex < this.CurrentPuzzleSet.puzzles.length)
 				{
@@ -1307,6 +1317,8 @@ export default class PicrossApp {
 				}
 				else
 				{
+					this.timerComplete = true;
+					this.CountdownStarted = false;
 					this.CreateVictoryText();
 					this.InputControlCube.actor.appearance.enabled = false;
 					this.InputControlCubeText.appearance.enabled = false;

@@ -183,6 +183,7 @@ class PicrossApp {
         //Edit UI
         this.SaveCube = null;
         this.SaveText = null;
+        this.CountdownPromise = null;
         //Victory UI
         this.VictoryText = null;
         //Challenge UI
@@ -203,6 +204,8 @@ class PicrossApp {
         this.CurrentHeight = 5;
         this.CurrentInputState = BlockState.Filled;
         this.EditMode = false;
+        //HACK: Track countdown plays
+        this.CountdownStarts = 0;
         this.CubeAssets = new mixed_reality_extension_sdk_1.AssetContainer(context);
         this.context.onStarted(() => this.started());
     }
@@ -452,9 +455,7 @@ class PicrossApp {
         this.CurrentPuzzleSet.puzzles = [newPuzzle0, newPuzzle1, newPuzzle2];
     }
     async ChallengeTimer() {
-        await this.delay(30 * 1000);
-        this.timerComplete = true;
-        return;
+        return await this.delay(30 * 1000);
     }
     SetupChallengeUI() {
         this.CountdownClock = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
@@ -497,14 +498,17 @@ class PicrossApp {
                 this.SetCubeState(this.InputControlCube, BlockState.Filled);
                 this.UpdateControlText();
                 this.CreateHints();
-                this.ChallengeTimer().then(_ => {
-                    this.CreateFailureAnimation();
-                    this.CountdownAnimation.stop();
-                    this.DestroyGameBoard();
-                    this.DestroyHints();
-                    this.CreateFailureText();
-                    this.InputControlCube.actor.appearance.enabled = false;
-                    this.InputControlCubeText.appearance.enabled = false;
+                let x = ++this.CountdownStarts;
+                this.CountdownPromise = this.ChallengeTimer().then(_ => {
+                    if (this.CountdownStarted && !this.timerComplete && this.CountdownStarts == x) {
+                        this.CreateFailureAnimation();
+                        this.CountdownAnimation.stop();
+                        this.DestroyGameBoard();
+                        this.DestroyHints();
+                        this.CreateFailureText();
+                        this.InputControlCube.actor.appearance.enabled = false;
+                        this.InputControlCubeText.appearance.enabled = false;
+                    }
                 }); //Wait for countdown inside here!!
             }
         });
@@ -729,7 +733,8 @@ class PicrossApp {
         const MainMenuControlBehavior = this.MainMenuCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
         MainMenuControlBehavior.onClick(_ => {
             this.CreateMainMenu();
-            this.timerComplete = false;
+            this.timerComplete = true;
+            this.CountdownStarted = false;
         });
         this.MainMenuText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
@@ -1027,12 +1032,17 @@ class PicrossApp {
                 this.CreateVictoryAnimation();
                 this.DestroyGameBoard();
                 this.DestroyHints();
+                if (this.CountdownPromise) {
+                    this.CountdownPromise = null;
+                }
                 if (++this.PuzzleIndex < this.CurrentPuzzleSet.puzzles.length) {
                     this.ResetVictoryCondition(this.CurrentPuzzleSet.puzzles[this.PuzzleIndex]);
                     this.CreateGameBoard();
                     this.CreateHints();
                 }
                 else {
+                    this.timerComplete = true;
+                    this.CountdownStarted = false;
                     this.CreateVictoryText();
                     this.InputControlCube.actor.appearance.enabled = false;
                     this.InputControlCubeText.appearance.enabled = false;

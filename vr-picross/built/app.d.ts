@@ -34,6 +34,7 @@ export default class PicrossApp {
     private MainMenuText;
     private SaveCube;
     private SaveText;
+    private CountdownPromise;
     private VictoryText;
     private CountdownClock;
     private CountdownClockHand;
@@ -50,6 +51,7 @@ export default class PicrossApp {
     private CurrentHeight;
     private CurrentInputState;
     private EditMode;
+    private CountdownStarts;
     private CreateMainMenu;
     private DestroyScene;
     private SetupSpeedrunSet;
