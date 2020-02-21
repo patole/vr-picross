@@ -158,6 +158,53 @@ export default class PicrossApp {
 		this.context.onStarted(() => this.started());
 	}
 
+	//defs
+	private RandomBoards : int[][][] = 
+	[
+		[
+			[1,1,1,1,1],
+			[0,0,0,0,0],
+			[1,1,1,1,1],
+			[0,0,0,0,0],
+			[1,1,1,1,1]
+		],
+		[
+			[1,1,1,0,0],
+			[1,1,1,0,0],
+			[0,0,1,1,1],
+			[1,1,1,0,0],
+			[1,1,1,0,0]
+		],
+		[
+			[1,1,1,1,1],
+			[0,1,1,1,1],
+			[0,0,1,1,1],
+			[0,0,0,1,1],
+			[0,0,0,0,1]
+		],
+		[
+			[0,0,0,0,0],
+			[0,0,1,0,0],
+			[0,0,1,0,0],
+			[0,0,1,0,0],
+			[0,0,0,0,0]
+		],
+		[
+			[1,1,1,1,1],
+			[0,0,1,0,0],
+			[0,0,1,0,0],
+			[0,0,1,0,0],
+			[0,0,1,0,0]
+		],
+		[
+			[1,0,0,0,0],
+			[1,0,0,0,0],
+			[1,0,0,0,0],
+			[1,0,0,0,0],
+			[1,1,1,1,1]
+		],
+	];
+
 	//Private Memers
 //#region  Member Vars
 	//Actor Registry, for easy cleanup
@@ -183,9 +230,12 @@ export default class PicrossApp {
 	private EditText: Actor = null;
 	private TutorialCube: Actor = null;
 	private TutorialText: Actor = null;
+	private SpeedRunCube: Actor = null;
+	private SpeedRunText: Actor = null;
 
 	private Banner: Actor = null;
 
+	private AnimPromise :Promise<void> = null;
 	//In-Game UI
 	private InputControlCube: GameBoardPiece = null;
 	private InputControlCubeText: Actor = null;
@@ -198,6 +248,12 @@ export default class PicrossApp {
 
 	//Victory UI
 	private VictoryText: Actor = null;
+
+	//Challenge UI
+	private CountdownClock: Actor = null;
+	private CountdownClockHand: Actor = null;
+	private CountdownAnimation: Animation = null;
+	private CountdownStarted = false;
 
 	private CurrentPuzzleSet: PicrossPuzzleSet = null;
 	private PuzzleIndex = 0;
@@ -272,9 +328,9 @@ export default class PicrossApp {
             actor: {
 				collider: {geometry: {shape: ColliderType.Box}},
                 transform: {
-                    local: { position:{ x:-0, y: -.5, z: 0}, scale:{ x: .2, y: .2, z: .2}}
+                    local: { position:{ x:-2, y: .2, z: 0}, scale:{ x: .2, y: .2, z: .2}}
 				},
-                name: 'HelpCube',
+                name: 'EditCube',
                 appearance: {
 					meshId: this.CubeMesh.id,
 					materialId: this.WhiteSolidMaterial.id
@@ -348,6 +404,50 @@ export default class PicrossApp {
 
 		this.SceneActors.push(this.TutorialText);
 
+		this.SpeedRunCube = Actor.Create(this.context, {
+            actor: {
+				collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x:0, y: -.5, z: 0}, scale:{ x: .2, y: .2, z: .2}}
+				},
+                name: 'SpeedRunCube',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+
+		const speedCubeButt = this.SpeedRunCube.setBehavior(ButtonBehavior);
+		speedCubeButt.onClick(_ => {
+			this.SetupSpeedrunSet();
+			this.PuzzleIndex = 0;
+			this.ResetVictoryCondition(this.CurrentPuzzleSet.puzzles[0]);
+			this.DestroyScene();
+			this.StartChallenge();
+			this.CountdownStarted = false;
+		});
+
+		this.SceneActors.push(this.SpeedRunCube);
+
+		this.SpeedRunText = Actor.Create(this.context, {
+			actor: {
+				name: 'TutorialText',
+				parentId: this.SpeedRunCube.id,
+				transform: {
+					local: { position: { x: 0, y: 1.5, z: 0 } }
+				},
+				text: {
+					contents: "3x30 Second Challenge!",
+					anchor: TextAnchorLocation.MiddleCenter,
+					color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+					height: 1
+				}
+			}
+		});
+
+		this.SceneActors.push(this.SpeedRunText);
+
 		this.Banner = Actor.Create(this.context, {
 			actor: {
 				name: 'BannerText',
@@ -380,7 +480,18 @@ export default class PicrossApp {
 		this.SceneEffects = new Array<Actor>();
 	}
 
-
+	private SetupSpeedrunSet()
+	{
+		this.CurrentPuzzleSet = new PicrossPuzzleSet();
+		for(let i = 0; i < 3; ++i)
+		{
+			let newPuzzle = new PicrossPuzzle();
+			newPuzzle.height = 5;
+			newPuzzle.width = 5;
+			newPuzzle.answerKey = this.RandomBoards[Math.floor(Math.random() * this.RandomBoards.length)];
+			this.CurrentPuzzleSet.puzzles.push(newPuzzle);
+		}
+	}
 
 	//Methods
     private started() {
@@ -448,8 +559,114 @@ export default class PicrossApp {
 		this.CurrentPuzzleSet.puzzles = [newPuzzle0, newPuzzle1, newPuzzle2];
 	}
 
-	private SetupChallenge()
+	private SetupChallengeUI()
 	{
+		this.CountdownClock = Actor.Create(this.context, {
+            actor: {
+				collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x: -.5, y: 1, z: 0 }, scale:{ x: .05, y: .05, z: .05}}
+				},
+                name: 'CountdownClock',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+
+		this.CountdownClockHand = Actor.Create(this.context, {
+            actor: {
+				collider: {geometry: {shape: ColliderType.Box}},
+                transform: {
+                    local: { position:{ x: 0, y: 2.5, z: 0 }, scale:{ x: .1, y: 5, z: .1}}
+				},
+				parentId: this.CountdownClock.id,
+                name: 'CountdownClockHand',
+                appearance: {
+					meshId: this.CubeMesh.id,
+					materialId: this.WhiteSolidMaterial.id
+				}
+            }
+		});
+
+		this.CountdownClockHand.setBehavior(ButtonBehavior).onClick( _ => {
+			if(!this.CountdownStarted)
+			{
+				this.CreateInGameInputControl();
+				this.CreateMainMenuControl();
+				this.CreateGameBoard();
+		
+				this.SetCubeState(this.InputControlCube, BlockState.Filled);
+				this.UpdateControlText();
+		
+				this.CreateHints();
+				this.CountdownAnimation.isPlaying = true;
+				this.CountdownStarted = true;
+			}
+		});
+
+		this.CountdownClock.setBehavior(ButtonBehavior).onClick( _ => {
+			if(!this.CountdownStarted)
+			{
+				this.CountdownAnimation.isPlaying = true;
+				this.CreateInGameInputControl();
+				this.CreateMainMenuControl();
+				this.CreateGameBoard();
+		
+				this.SetCubeState(this.InputControlCube, BlockState.Filled);
+				this.UpdateControlText();
+		
+				this.CreateHints();
+				this.CountdownStarted = true;
+			}
+		});
+
+	
+
+		this.CountdownClock.createAnimation("Countdown", {
+			keyframes: [{
+				time: 0,
+				value: { transform: { local: { rotation: Quaternion.Identity() } } }
+			}, {
+				time:  15,
+				value: { transform: { local: { rotation: Quaternion.RotationAxis(Vector3.Backward(), Math.PI / 2) } } },	
+			},{
+				time:  30,
+				value: { transform: { local: { rotation: Quaternion.RotationAxis(Vector3.Backward(), Math.PI) } } },	
+			}],
+			wrapMode: AnimationWrapMode.Once
+		});
+
+		this.CountdownAnimation = this.CountdownClock.animationsByName.get("Countdown");
+		this.AnimPromise = this.CountdownAnimation.finished().then(value =>{
+					this.DestroyGameBoard();
+					this.DestroyHints();
+					this.CreateFailureAnimation();
+					this.CreateFailureText();
+					this.InputControlCube.actor.appearance.enabled = false;
+					this.InputControlCubeText.appearance.enabled = false;
+				});
+
+		// this.CountdownClock.createAnimation("Countdown", {
+		// 	keyframes: this.generateSpinFrames(30, Vector3.Forward()),
+		// 	wrapMode: AnimationWrapMode.Once
+		// }).then(anim => {
+		// 	this.CountdownAnimation = anim;
+		// 	this.CountdownAnimation. finished().then(_=>{
+		// 		this.DestroyGameBoard();
+		// 		this.DestroyHints();
+		// 		this.CreateFailureAnimation();
+		// 		this.CreateFailureText();
+		// 		this.InputControlCube.actor.appearance.enabled = false;
+		// 		this.InputControlCubeText.appearance.enabled = false;
+		// 	}); 
+		// },(reason) => {
+		// 	reason.toString();
+		// });
+
+		this.SceneActors.push(this.CountdownClock);
+		this.SceneActors.push(this.CountdownClockHand);
 
 	}
 
@@ -472,6 +689,12 @@ export default class PicrossApp {
 		this.SetupEditUI();
 		this.EditMode = true;
 		this.UpdateBoardFromCustom();
+	}
+
+	private StartChallenge()
+	{
+		this.EditMode = false;
+		this.SetupChallengeUI();
 	}
 
 	private StartGame()
@@ -580,7 +803,9 @@ export default class PicrossApp {
 					value: { transform: { local: { rotation: Quaternion.Identity()}}}
 				}],
 				wrapMode: AnimationWrapMode.Once
-			}).then(anim => {this.InputControlCube.fillin = anim;});
+			}).then(anim => {
+				this.InputControlCube.fillin = anim;
+			});
 
 			this.InputControlCube.actor.createAnimation(
 			// The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
@@ -767,6 +992,7 @@ export default class PicrossApp {
 				const gameBoardBehavior = cube.actor.setBehavior(ButtonBehavior);
 
 				gameBoardBehavior.onClick(_  => {
+
 					if(cube.currentState !== this.CurrentInputState)
 					{
 						cube.currentState = this.CurrentInputState;
@@ -1018,6 +1244,15 @@ export default class PicrossApp {
 
 	private CheckVictoryPattern()
 	{
+		if(this.CountdownStarted && this.CountdownAnimation.time >= 30)
+		{
+			this.DestroyGameBoard();
+			this.DestroyHints();
+			this.CreateFailureAnimation();
+			this.CreateFailureText();
+			this.InputControlCube.actor.appearance.enabled = false;
+			this.InputControlCubeText.appearance.enabled = false;
+		}
 		if(!this.EditMode)
 		{
 			let victory = true;
@@ -1055,6 +1290,11 @@ export default class PicrossApp {
 					this.CreateVictoryText();
 					this.InputControlCube.actor.appearance.enabled = false;
 					this.InputControlCubeText.appearance.enabled = false;
+					if(this.CountdownAnimation)
+					{
+						this.CountdownAnimation.stop();
+						this.CountdownAnimation = null;
+					}
 				}
 			}
 		}
@@ -1100,6 +1340,44 @@ export default class PicrossApp {
 
 		this.SceneEffects.push(this.VictoryText);
 		
+	}
+
+	private CreateFailureAnimation()
+	{
+		let MiddleBoardVec = this.GameBoard[Math.floor(this.CurrentHeight/2)][Math.floor(this.CurrentWidth)/2].actor.transform.local.position;
+		this.GameBoard.forEach(boardRow => {
+			boardRow.forEach(cube => {
+				cube.actor.appearance.enabled = false;
+				let localPos = cube.actor.transform.local.position;
+				let velocityVec = (localPos.subtract(MiddleBoardVec));
+				//Create RB
+				let localRB = Actor.Create(this.context, {
+					actor: {
+						collider: {geometry: {shape: ColliderType.Box}},
+						transform: {
+							local: {position: localPos , scale:{ x: .1, y: .1, z: .1}}
+						},
+						
+						rigidBody: {
+							enabled: true, 
+							velocity: velocityVec,
+							detectCollisions: true, 
+							
+							collisionDetectionMode: CollisionDetectionMode.ContinuousDynamic },
+						appearance: {
+							meshId: this.CubeMesh.id,
+							materialId: this.BlackSolidMaterial.id
+						}
+					}
+				});
+				this.SceneEffects.push(localRB);
+			});
+		});
+	}
+
+	private CreateFailureText()
+	{
+
 	}
 
 	private CreateVictoryAnimation()

@@ -7,6 +7,7 @@ export default class PicrossApp {
     private context;
     private baseUrl;
     constructor(context: Context, baseUrl: string);
+    private RandomBoards;
     private SceneActors;
     private SceneEffects;
     private CubeAssets;
@@ -21,7 +22,10 @@ export default class PicrossApp {
     private EditText;
     private TutorialCube;
     private TutorialText;
+    private SpeedRunCube;
+    private SpeedRunText;
     private Banner;
+    private AnimPromise;
     private InputControlCube;
     private InputControlCubeText;
     private MainMenuCube;
@@ -29,6 +33,10 @@ export default class PicrossApp {
     private SaveCube;
     private SaveText;
     private VictoryText;
+    private CountdownClock;
+    private CountdownClockHand;
+    private CountdownAnimation;
+    private CountdownStarted;
     private CurrentPuzzleSet;
     private PuzzleIndex;
     private CustomPuzzleSet;
@@ -42,13 +50,15 @@ export default class PicrossApp {
     private EditMode;
     private CreateMainMenu;
     private DestroyScene;
+    private SetupSpeedrunSet;
     private started;
     private SetupStarterPicrossSet;
     private SetupTutorialPicrossSet;
-    private SetupChallenge;
+    private SetupChallengeUI;
     private ResetVictoryCondition;
     private DefaultVictoryCondition;
     private EditGame;
+    private StartChallenge;
     private StartGame;
     private CreateSaveCube;
     private UpdateCustomFromBoard;
@@ -66,6 +76,8 @@ export default class PicrossApp {
     private CheckVictoryPattern;
     private CheckVictoryBlackout;
     private CreateVictoryText;
+    private CreateFailureAnimation;
+    private CreateFailureText;
     private CreateVictoryAnimation;
     private SetCubeState;
     private UpdateControlText;

@@ -26,15 +26,17 @@ const mixed_reality_extension_sdk_1 = require("@microsoft/mixed-reality-extensio
 /// - Floating labels next to cube array
 /// - Allow crossing out with interaction
 /// Tutorial set
-//Todo for Picross:
-//4: Labels:
-/// - Auto cross out on filling the row correctly (Pushed)
-//4.5 Sets of puzzles, scripting? (On start, on end, maybe more plug and play animations for cube states?) 
-/// Random fast-paced 5x5 sets
 //5: Wow factor
 //// - Rigid Body on victory (DONE)
 /// - Sounds
-/// - Animations?
+//Todo for Picross:
+//4.5 Sets of puzzles, scripting? 
+/// Random fast-paced 5x5 sets
+//Pushed for this release:
+//4: Labels:
+/// - Auto cross out on filling the row correctly (Pushed)
+//5: Wow
+//Sounds
 class PicrossPuzzle {
     constructor() {
         this.width = 0;
@@ -101,6 +103,51 @@ class PicrossApp {
     constructor(context, baseUrl) {
         this.context = context;
         this.baseUrl = baseUrl;
+        //defs
+        this.RandomBoards = [
+            [
+                [1, 1, 1, 1, 1],
+                [0, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1],
+                [0, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1]
+            ],
+            [
+                [1, 1, 1, 0, 0],
+                [1, 1, 1, 0, 0],
+                [0, 0, 1, 1, 1],
+                [1, 1, 1, 0, 0],
+                [1, 1, 1, 0, 0]
+            ],
+            [
+                [1, 1, 1, 1, 1],
+                [0, 1, 1, 1, 1],
+                [0, 0, 1, 1, 1],
+                [0, 0, 0, 1, 1],
+                [0, 0, 0, 0, 1]
+            ],
+            [
+                [0, 0, 0, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 0, 0, 0]
+            ],
+            [
+                [1, 1, 1, 1, 1],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0],
+                [0, 0, 1, 0, 0]
+            ],
+            [
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0],
+                [1, 1, 1, 1, 1]
+            ],
+        ];
         //Private Memers
         //#region  Member Vars
         //Actor Registry, for easy cleanup
@@ -123,7 +170,10 @@ class PicrossApp {
         this.EditText = null;
         this.TutorialCube = null;
         this.TutorialText = null;
+        this.SpeedRunCube = null;
+        this.SpeedRunText = null;
         this.Banner = null;
+        this.AnimPromise = null;
         //In-Game UI
         this.InputControlCube = null;
         this.InputControlCubeText = null;
@@ -134,6 +184,11 @@ class PicrossApp {
         this.SaveText = null;
         //Victory UI
         this.VictoryText = null;
+        //Challenge UI
+        this.CountdownClock = null;
+        this.CountdownClockHand = null;
+        this.CountdownAnimation = null;
+        this.CountdownStarted = false;
         this.CurrentPuzzleSet = null;
         this.PuzzleIndex = 0;
         this.CustomPuzzleSet = null;
@@ -196,9 +251,9 @@ class PicrossApp {
             actor: {
                 collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
                 transform: {
-                    local: { position: { x: -0, y: -.5, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
+                    local: { position: { x: -2, y: .2, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
                 },
-                name: 'HelpCube',
+                name: 'EditCube',
                 appearance: {
                     meshId: this.CubeMesh.id,
                     materialId: this.WhiteSolidMaterial.id
@@ -263,6 +318,45 @@ class PicrossApp {
             }
         });
         this.SceneActors.push(this.TutorialText);
+        this.SpeedRunCube = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                transform: {
+                    local: { position: { x: 0, y: -.5, z: 0 }, scale: { x: .2, y: .2, z: .2 } }
+                },
+                name: 'SpeedRunCube',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        const speedCubeButt = this.SpeedRunCube.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior);
+        speedCubeButt.onClick(_ => {
+            this.SetupSpeedrunSet();
+            this.PuzzleIndex = 0;
+            this.ResetVictoryCondition(this.CurrentPuzzleSet.puzzles[0]);
+            this.DestroyScene();
+            this.StartChallenge();
+            this.CountdownStarted = false;
+        });
+        this.SceneActors.push(this.SpeedRunCube);
+        this.SpeedRunText = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                name: 'TutorialText',
+                parentId: this.SpeedRunCube.id,
+                transform: {
+                    local: { position: { x: 0, y: 1.5, z: 0 } }
+                },
+                text: {
+                    contents: "3x30 Second Challenge!",
+                    anchor: mixed_reality_extension_sdk_1.TextAnchorLocation.MiddleCenter,
+                    color: { r: 30 / 255, g: 206 / 255, b: 213 / 255 },
+                    height: 1
+                }
+            }
+        });
+        this.SceneActors.push(this.SpeedRunText);
         this.Banner = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
             actor: {
                 name: 'BannerText',
@@ -288,6 +382,16 @@ class PicrossApp {
             element.destroy();
         });
         this.SceneEffects = new Array();
+    }
+    SetupSpeedrunSet() {
+        this.CurrentPuzzleSet = new PicrossPuzzleSet();
+        for (let i = 0; i < 3; ++i) {
+            let newPuzzle = new PicrossPuzzle();
+            newPuzzle.height = 5;
+            newPuzzle.width = 5;
+            newPuzzle.answerKey = this.RandomBoards[Math.floor(Math.random() * this.RandomBoards.length)];
+            this.CurrentPuzzleSet.puzzles.push(newPuzzle);
+        }
     }
     //Methods
     started() {
@@ -340,7 +444,98 @@ class PicrossApp {
             [0, 0, 1]];
         this.CurrentPuzzleSet.puzzles = [newPuzzle0, newPuzzle1, newPuzzle2];
     }
-    SetupChallenge() {
+    SetupChallengeUI() {
+        this.CountdownClock = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                transform: {
+                    local: { position: { x: -.5, y: 1, z: 0 }, scale: { x: .05, y: .05, z: .05 } }
+                },
+                name: 'CountdownClock',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        this.CountdownClockHand = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+            actor: {
+                collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                transform: {
+                    local: { position: { x: 0, y: 2.5, z: 0 }, scale: { x: .1, y: 5, z: .1 } }
+                },
+                parentId: this.CountdownClock.id,
+                name: 'CountdownClockHand',
+                appearance: {
+                    meshId: this.CubeMesh.id,
+                    materialId: this.WhiteSolidMaterial.id
+                }
+            }
+        });
+        this.CountdownClockHand.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior).onClick(_ => {
+            if (!this.CountdownStarted) {
+                this.CreateInGameInputControl();
+                this.CreateMainMenuControl();
+                this.CreateGameBoard();
+                this.SetCubeState(this.InputControlCube, BlockState.Filled);
+                this.UpdateControlText();
+                this.CreateHints();
+                this.CountdownAnimation.isPlaying = true;
+                this.CountdownStarted = true;
+            }
+        });
+        this.CountdownClock.setBehavior(mixed_reality_extension_sdk_1.ButtonBehavior).onClick(_ => {
+            if (!this.CountdownStarted) {
+                this.CountdownAnimation.isPlaying = true;
+                this.CreateInGameInputControl();
+                this.CreateMainMenuControl();
+                this.CreateGameBoard();
+                this.SetCubeState(this.InputControlCube, BlockState.Filled);
+                this.UpdateControlText();
+                this.CreateHints();
+                this.CountdownStarted = true;
+            }
+        });
+        this.CountdownClock.createAnimation("Countdown", {
+            keyframes: [{
+                    time: 0,
+                    value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.Identity() } } }
+                }, {
+                    time: 15,
+                    value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.RotationAxis(mixed_reality_extension_sdk_1.Vector3.Backward(), Math.PI / 2) } } },
+                }, {
+                    time: 30,
+                    value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.RotationAxis(mixed_reality_extension_sdk_1.Vector3.Backward(), Math.PI) } } },
+                }],
+            wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once
+        });
+        this.CountdownAnimation = this.CountdownClock.animationsByName.get("Countdown");
+        this.AnimPromise = this.CountdownAnimation.finished().then(value => {
+            this.DestroyGameBoard();
+            this.DestroyHints();
+            this.CreateFailureAnimation();
+            this.CreateFailureText();
+            this.InputControlCube.actor.appearance.enabled = false;
+            this.InputControlCubeText.appearance.enabled = false;
+        });
+        // this.CountdownClock.createAnimation("Countdown", {
+        // 	keyframes: this.generateSpinFrames(30, Vector3.Forward()),
+        // 	wrapMode: AnimationWrapMode.Once
+        // }).then(anim => {
+        // 	this.CountdownAnimation = anim;
+        // 	this.CountdownAnimation. finished().then(_=>{
+        // 		this.DestroyGameBoard();
+        // 		this.DestroyHints();
+        // 		this.CreateFailureAnimation();
+        // 		this.CreateFailureText();
+        // 		this.InputControlCube.actor.appearance.enabled = false;
+        // 		this.InputControlCubeText.appearance.enabled = false;
+        // 	}); 
+        // },(reason) => {
+        // 	reason.toString();
+        // });
+        this.SceneActors.push(this.CountdownClock);
+        this.SceneActors.push(this.CountdownClockHand);
     }
     ResetVictoryCondition(puzzle) {
         this.VictoryCondition = puzzle.answerKey;
@@ -356,6 +551,10 @@ class PicrossApp {
         this.SetupEditUI();
         this.EditMode = true;
         this.UpdateBoardFromCustom();
+    }
+    StartChallenge() {
+        this.EditMode = false;
+        this.SetupChallengeUI();
     }
     StartGame() {
         this.EditMode = false;
@@ -448,7 +647,9 @@ class PicrossApp {
                     value: { transform: { local: { rotation: mixed_reality_extension_sdk_1.Quaternion.Identity() } } }
                 }],
             wrapMode: mixed_reality_extension_sdk_1.AnimationWrapMode.Once
-        }).then(anim => { this.InputControlCube.fillin = anim; });
+        }).then(anim => {
+            this.InputControlCube.fillin = anim;
+        });
         this.InputControlCube.actor.createAnimation(
         // The name is a unique identifier for this animation. We'll pass it to "startAnimation" later.
         "Erase", {
@@ -798,6 +999,14 @@ class PicrossApp {
         }
     }
     CheckVictoryPattern() {
+        if (this.CountdownStarted && this.CountdownAnimation.time >= 30) {
+            this.DestroyGameBoard();
+            this.DestroyHints();
+            this.CreateFailureAnimation();
+            this.CreateFailureText();
+            this.InputControlCube.actor.appearance.enabled = false;
+            this.InputControlCubeText.appearance.enabled = false;
+        }
         if (!this.EditMode) {
             let victory = true;
             for (let i = 0; i < this.GameBoard.length; i++) {
@@ -827,6 +1036,10 @@ class PicrossApp {
                     this.CreateVictoryText();
                     this.InputControlCube.actor.appearance.enabled = false;
                     this.InputControlCubeText.appearance.enabled = false;
+                    if (this.CountdownAnimation) {
+                        this.CountdownAnimation.stop();
+                        this.CountdownAnimation = null;
+                    }
                 }
             }
         }
@@ -861,6 +1074,38 @@ class PicrossApp {
             }
         });
         this.SceneEffects.push(this.VictoryText);
+    }
+    CreateFailureAnimation() {
+        let MiddleBoardVec = this.GameBoard[Math.floor(this.CurrentHeight / 2)][Math.floor(this.CurrentWidth) / 2].actor.transform.local.position;
+        this.GameBoard.forEach(boardRow => {
+            boardRow.forEach(cube => {
+                cube.actor.appearance.enabled = false;
+                let localPos = cube.actor.transform.local.position;
+                let velocityVec = (localPos.subtract(MiddleBoardVec));
+                //Create RB
+                let localRB = mixed_reality_extension_sdk_1.Actor.Create(this.context, {
+                    actor: {
+                        collider: { geometry: { shape: mixed_reality_extension_sdk_1.ColliderType.Box } },
+                        transform: {
+                            local: { position: localPos, scale: { x: .1, y: .1, z: .1 } }
+                        },
+                        rigidBody: {
+                            enabled: true,
+                            velocity: velocityVec,
+                            detectCollisions: true,
+                            collisionDetectionMode: mixed_reality_extension_sdk_1.CollisionDetectionMode.ContinuousDynamic
+                        },
+                        appearance: {
+                            meshId: this.CubeMesh.id,
+                            materialId: this.BlackSolidMaterial.id
+                        }
+                    }
+                });
+                this.SceneEffects.push(localRB);
+            });
+        });
+    }
+    CreateFailureText() {
     }
     CreateVictoryAnimation() {
         //First, hide game board and create RBs from filled blocks
